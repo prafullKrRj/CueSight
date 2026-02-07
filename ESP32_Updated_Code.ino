@@ -30,8 +30,8 @@
 const char* ssid = "YourWiFiSSID";
 const char* password = "YourWiFiPassword";
 
-#define UDP_PORT 37020
-#define WEBSOCKET_PORT 8888
+#define UDP_PORT 4210
+#define WEBSOCKET_PORT 82
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 WebSocketsServer webSocket(WEBSOCKET_PORT);

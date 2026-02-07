@@ -49,8 +49,8 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import kotlin.math.max
 
-private const val UDP_PORT = 37020
-private const val WEBSOCKET_PORT = 8888
+private const val UDP_PORT = 4210
+private const val WEBSOCKET_PORT = 82
 private const val FRAME_WIDTH = 160
 private const val FRAME_HEIGHT = 120
 private const val FRAME_TIMEOUT_MS = 5_000L
