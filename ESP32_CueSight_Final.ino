@@ -51,8 +51,8 @@
 const char* ssid = "YourWiFiSSID";           // TODO: Change this
 const char* password = "YourWiFiPassword";   // TODO: Change this
 
-#define UDP_PORT 37020
-#define WEBSOCKET_PORT 8888
+#define UDP_PORT 4210
+#define WEBSOCKET_PORT 82
 
 // ============================================================================
 // GLOBALS
