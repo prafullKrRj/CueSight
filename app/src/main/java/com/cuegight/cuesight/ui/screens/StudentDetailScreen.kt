@@ -35,9 +35,24 @@ fun StudentDetailScreen(
     val student by viewModel.getStudentById(studentId).collectAsState(initial = null)
     val sessions by viewModel.getSessionsByStudent(studentId).collectAsState(initial = emptyList())
     val orderedSessions = remember(sessions) { sessions.sortedBy { it.startTime } }
+    val chartEntries = remember(orderedSessions) {
+        orderedSessions.mapIndexed { index, session ->
+            Entry(index.toFloat(), session.totalEmotionsDetected.toFloat())
+        }
+    }
     val lineColor = MaterialTheme.colorScheme.primary.toArgb()
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f).toArgb()
+    val chartData = remember(chartEntries, lineColor) {
+        LineData(
+            LineDataSet(chartEntries, "").apply {
+                color = lineColor
+                lineWidth = 2f
+                setDrawCircles(false)
+                setDrawValues(false)
+            }
+        )
+    }
     val totalDurationSeconds = remember(orderedSessions) {
         orderedSessions.sumOf { it.durationSeconds }
     }
@@ -209,16 +224,7 @@ fun StudentDetailScreen(
                                         }
                                     },
                                     update = { chart ->
-                                        val entries = orderedSessions.mapIndexed { index, session ->
-                                            Entry(index.toFloat(), session.totalEmotionsDetected.toFloat())
-                                        }
-                                        val dataSet = LineDataSet(entries, "").apply {
-                                            color = lineColor
-                                            lineWidth = 2f
-                                            setDrawCircles(false)
-                                            setDrawValues(false)
-                                        }
-                                        chart.data = LineData(dataSet)
+                                        chart.data = chartData
                                         chart.invalidate()
                                     },
                                     modifier = Modifier
