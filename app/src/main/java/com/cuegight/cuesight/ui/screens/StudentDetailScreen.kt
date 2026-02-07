@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -19,6 +20,7 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
+import com.cuegight.cuesight.R
 import org.koin.androidx.compose.koinViewModel
 import java.util.Locale
 
@@ -54,6 +56,7 @@ fun StudentDetailScreen(
     val averageEmotionsLabel = remember(averageEmotions) {
         String.format(Locale.US, AVERAGE_FORMAT, averageEmotions)
     }
+    val chartLabel = stringResource(R.string.progress_emotions_label)
     val lineColor = MaterialTheme.colorScheme.primary.toArgb()
     val axisColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     
@@ -211,13 +214,13 @@ fun StudentDetailScreen(
                                         }
                                     },
                                     update = { chart ->
-                                        val dataSet = LineDataSet(sessionEntries, "").apply {
+                                        val dataSet = LineDataSet(sessionEntries, chartLabel).apply {
                                             color = lineColor
                                             setCircleColor(lineColor)
                                             lineWidth = 2f
                                             circleRadius = 3f
                                             setDrawValues(false)
-                                            mode = LineDataSet.Mode.CUBIC_BEZIER
+                                            mode = LineDataSet.Mode.LINEAR
                                         }
                                         chart.xAxis.textColor = axisColor
                                         chart.axisLeft.textColor = axisColor
