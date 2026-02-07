@@ -59,6 +59,17 @@ fun StudentDetailScreen(
     val chartLabel = stringResource(R.string.progress_emotions_label)
     val lineColor = MaterialTheme.colorScheme.primary.toArgb()
     val axisColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val lineData = remember(sessionEntries, chartLabel, lineColor) {
+        val dataSet = LineDataSet(sessionEntries, chartLabel).apply {
+            color = lineColor
+            setCircleColor(lineColor)
+            lineWidth = 2f
+            circleRadius = 3f
+            setDrawValues(false)
+            mode = LineDataSet.Mode.LINEAR
+        }
+        LineData(dataSet)
+    }
     
     Scaffold(
         topBar = {
@@ -214,17 +225,9 @@ fun StudentDetailScreen(
                                         }
                                     },
                                     update = { chart ->
-                                        val dataSet = LineDataSet(sessionEntries, chartLabel).apply {
-                                            color = lineColor
-                                            setCircleColor(lineColor)
-                                            lineWidth = 2f
-                                            circleRadius = 3f
-                                            setDrawValues(false)
-                                            mode = LineDataSet.Mode.LINEAR
-                                        }
                                         chart.xAxis.textColor = axisColor
                                         chart.axisLeft.textColor = axisColor
-                                        chart.data = LineData(dataSet)
+                                        chart.data = lineData
                                         chart.invalidate()
                                     }
                                 )
