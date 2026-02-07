@@ -211,7 +211,7 @@ fun StudentDetailScreen(
                                         }
                                     },
                                     update = { chart ->
-                                        val dataSet = LineDataSet(sessionEntries, "Emotions").apply {
+                                        val dataSet = LineDataSet(sessionEntries, "").apply {
                                             color = lineColor
                                             setCircleColor(lineColor)
                                             lineWidth = 2f
