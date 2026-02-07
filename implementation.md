@@ -1,4 +1,139 @@
+MAJOR ENHANCMENT DONT USE HTTP AND DON STREAM VIDEO DIRECTLY : Here is a comprehensive, production-grade LLM system prompt for the updated CueSight architecture (WebSocket-only communication, no streaming), suitable for generating Android+ESP32 code. This replaces video streaming with event-driven image/frame transmission over WebSocket:
 
+---
+
+## CueSight: Production-Grade LLM Implementation Prompt for WebSocket-Only Image+Command Architecture
+
+### 1. System Roles & Actor Model
+
+- **Teacher-only Android App:** The teacher manages all controls: session management, student selection, mode switching, logging of guesses, and analytics. There is no student-facing app. The student only wears ESP32-CAM smart glasses.
+- **Student:** Wears the CueSight smart glasses. No device interaction.
+
+---
+
+### 2. Communication Protocol
+
+#### a. UDP Device Discovery
+
+- **ESP32-CAM** broadcasts every 2 seconds: UDP packet with `"CUESIGHT|<IP>|<WS_PORT>"` on port 4210.
+- **Android app** listens, finds devices, and initiates WebSocket connection.
+
+#### b. Single WebSocket Channel
+
+- **Everything (image frames, commands, status) uses a persistent WebSocket connection**:
+    - ESP32-CAM: uses WebSocketsServer library, supports binary (image) and text (JSON).
+    - Android: OkHttp WebSocket client.
+    - No HTTP/MJPEG streaming, eliminating stateless streams.
+
+**Message Types:**
+- **Binary (JPEG):** Image frame (with optional 1-byte header or frame type) sent only on demand (e.g., teacher taps “capture frame”).
+- **Text (JSON):** Commands and status:
+    - `{"cmd": "mode", "val": "teach"}`
+    - `{"cmd": "mode", "val": "practice"}`
+    - `{"cmd": "emotion", "val": "Happy"}` (label for Teaching mode)
+    - `{"cmd": "clear"}`
+    - `{"cmd": "log_guess", ...}` (teacher logs student guess + session bound fields)
+    - Status, ACK/NACK, error, ping/pong
+
+**Protocol Multiplexing:**
+- Receiver (ESP32/Android) distinguishes binary vs text. For binary, reads JPEG bytes; for text, parses JSON.
+
+**Sequence:**
+- Device discovered via UDP
+- Teacher connects via WebSocket
+- Teacher requests/captures image frame (ESP32 sends JPEG via binary WebSocket)
+- Android processes frame (ML pipeline for FER), returns command as needed
+- Mode switches: Teaching (ESP32 displays emotion label on OLED), Practice (OLED cleared), analytics logged
+
+---
+
+### 3. ESP32-CAM Firmware
+
+#### a. Event-Driven JPEG Capture
+
+- On command from Android (e.g., `{"cmd": "capture_frame"}`), ESP32 captures camera frame, converts to JPEG (QVGA, quality 12), sends immediately as binary WebSocket.
+- Single buffer strategy: no frame queue, minimal RAM pressure.
+
+#### b. OLED Display Logic
+
+- Teaching mode: displays received emotion label on OLED, e.g. “😊 Happy.”
+- Practice mode: OLED cleared (no label).
+- Display rendered only via command; no polling.
+
+#### c. Robust Error Handling
+
+- WebSocket ACK/NACK and ping/pong for reliability.
+- Memory errors: return explicit NACK.
+- Device resets on fatal error.
+
+---
+
+### 4. Android App
+
+#### a. WebSocket Client (OkHttp)
+
+- Listens for both binary and text messages.
+- On binary: decodes JPEG bytes, runs ML pipeline (MobileNetV3 FER, ML Kit face bounding).
+- On text: parses commands/status, sends responses as needed.
+
+#### b. Room Database: Session Binding
+
+**Schema Example:**
+- Students table: student_id, name, DOB, notes
+- Sessions table: session_id, student_id, timestamps, duration, mode
+- EmotionLogs table: timestamp, ai_detected, ai_confidence, student_guess, is_correct
+- ModeSwitches, TeachingSnapshots, etc. (analytic info, see prior schema)
+
+#### c. Session Structure & Analytics
+
+- Session starts with student selection, ends with explicit action.
+- Analytics: accuracy trend, confusion matrix, per-emotion breakdown, longitudinal progress.
+
+---
+
+### 5. UI & Wireframes
+
+**Screens:**
+
+- Splash Screen: logo, loading
+- Student Selection/Creation: list/search, add new
+- Device Connection: UDP scan, WebSocket connect, confirmation/error
+- Active Session: mode toggle (Teaching/Practice), capture frame, guess log, emotion display
+- End Session Confirmation: summary, notes, save/cancel
+- Session Summary/Analytics: charts, logs, confusion matrix
+- Navigation graph as in previous detailed spec
+
+---
+
+### 6. ML Pipeline
+
+- **MobileNetV3-Small FER (TFLite):** Input JPEG from ESP32, face detected via ML Kit, face crop processed for emotion prediction with stabilization buffer.
+- **No streaming:** Only process frames when received via WebSocket (on teacher request).
+- **Analytics:** ML output saved alongside teacher log for later analysis.
+
+---
+
+### 7. Implementation Constraints
+
+- WebSocket channel only, no streaming/http; minimal RAM footprint for ESP32.
+- All event-driven (image/command on-demand), no continuous polling.
+- No cloud/internet or persistent streaming, all local LAN/WiFi.
+- Robust error handling: ACK/NACK, reconnects, timeouts, memory limit guards.
+- Teacher-only app, no student-facing interface.
+- Android minimum SDK 26, production code, Room DB, event-driven UI.
+
+---
+
+### 8. Error Handling
+
+- Network: handle disconnects/reconnects, visible in UI.
+- Frame errors: ESP32 returns NACK, Android retries.
+- ML errors: low-confidence/face not found → user feedback.
+- Session errors: recoverable via retries, logs persisted/replayed.
+
+---
+
+**This prompt covers full requirements for LLM system/code generation for production-grade CueSight system with WebSocket-only, event-driven, binary+text protocol between ESP32-CAM and Android app.**
 
 # CueSight: Complete Production-Grade System Architecture & LLM Implementation Prompt
 
