@@ -23,6 +23,7 @@ import org.koin.androidx.compose.koinViewModel
 import java.util.Locale
 
 private const val AVERAGE_FORMAT = "%.1f"
+private const val CHART_LABEL = "Emotions Detected"
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -35,7 +36,7 @@ fun StudentDetailScreen(
     val student by viewModel.getStudentById(studentId).collectAsState(initial = null)
     val sessions by viewModel.getSessionsByStudent(studentId).collectAsState(initial = emptyList())
     val orderedSessions = remember(sessions) { sessions.sortedBy { it.startTime } }
-    val chartEntries = remember(orderedSessions) {
+    val sessionChartEntries = remember(orderedSessions) {
         orderedSessions.mapIndexed { index, session ->
             Entry(index.toFloat(), session.totalEmotionsDetected.toFloat())
         }
@@ -43,9 +44,9 @@ fun StudentDetailScreen(
     val lineColor = MaterialTheme.colorScheme.primary.toArgb()
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f).toArgb()
-    val chartData = remember(chartEntries, lineColor) {
+    val chartData = remember(sessionChartEntries, lineColor) {
         LineData(
-            LineDataSet(chartEntries, "").apply {
+            LineDataSet(sessionChartEntries, CHART_LABEL).apply {
                 color = lineColor
                 lineWidth = 2f
                 setDrawCircles(false)
