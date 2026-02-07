@@ -224,6 +224,9 @@ fun StudentDetailScreen(
                                         }
                                     },
                                     update = { chart ->
+                                        chart.axisLeft.textColor = labelColor
+                                        chart.axisLeft.gridColor = gridColor
+                                        chart.xAxis.textColor = labelColor
                                         chart.data = chartData
                                         chart.invalidate()
                                     },
