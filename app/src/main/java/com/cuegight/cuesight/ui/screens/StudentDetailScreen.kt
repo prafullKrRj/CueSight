@@ -8,16 +8,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.viewmodel.StudentViewModel
-import com.patrykandpatrick.vico.compose.axis.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.axis.rememberStartAxis
-import com.patrykandpatrick.vico.compose.chart.Chart
-import com.patrykandpatrick.vico.compose.m3.lineChart
-import com.patrykandpatrick.vico.core.entry.FloatEntry
-import com.patrykandpatrick.vico.core.entry.entryModelOf
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
 import org.koin.androidx.compose.koinViewModel
 import java.util.Locale
 
@@ -36,7 +37,7 @@ fun StudentDetailScreen(
     val orderedSessions = remember(sessions) { sessions.sortedBy { it.startTime } }
     val sessionEntries = remember(orderedSessions) {
         orderedSessions.mapIndexed { index, session ->
-            FloatEntry(index.toFloat(), session.totalEmotionsDetected.toFloat())
+            Entry(index.toFloat(), session.totalEmotionsDetected.toFloat())
         }
     }
     val totalDurationSeconds = remember(orderedSessions) {
@@ -53,6 +54,8 @@ fun StudentDetailScreen(
     val averageEmotionsLabel = remember(averageEmotions) {
         String.format(Locale.US, AVERAGE_FORMAT, averageEmotions)
     }
+    val lineColor = MaterialTheme.colorScheme.primary.toArgb()
+    val axisColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     
     Scaffold(
         topBar = {
@@ -191,14 +194,36 @@ fun StudentDetailScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                 )
                             } else {
-                                Chart(
-                                    chart = lineChart(),
-                                    model = entryModelOf(sessionEntries),
-                                    startAxis = rememberStartAxis(),
-                                    bottomAxis = rememberBottomAxis(),
+                                AndroidView(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(180.dp)
+                                        .height(180.dp),
+                                    factory = { context ->
+                                        LineChart(context).apply {
+                                            description.isEnabled = false
+                                            legend.isEnabled = false
+                                            setTouchEnabled(false)
+                                            axisRight.isEnabled = false
+                                            xAxis.position = XAxis.XAxisPosition.BOTTOM
+                                            xAxis.setDrawGridLines(false)
+                                            xAxis.granularity = 1f
+                                            axisLeft.axisMinimum = 0f
+                                        }
+                                    },
+                                    update = { chart ->
+                                        val dataSet = LineDataSet(sessionEntries, "Emotions").apply {
+                                            color = lineColor
+                                            setCircleColor(lineColor)
+                                            lineWidth = 2f
+                                            circleRadius = 3f
+                                            setDrawValues(false)
+                                            mode = LineDataSet.Mode.CUBIC_BEZIER
+                                        }
+                                        chart.xAxis.textColor = axisColor
+                                        chart.axisLeft.textColor = axisColor
+                                        chart.data = LineData(dataSet)
+                                        chart.invalidate()
+                                    }
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 FlowRow(

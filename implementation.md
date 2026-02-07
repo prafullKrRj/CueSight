@@ -1280,7 +1280,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Charts (for analytics)
-    implementation("com.patrykandpatrick.vico:compose-m3:1.13.1")
+    implementation("com.github.PhilJay:MPAndroidChart:3.1.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
