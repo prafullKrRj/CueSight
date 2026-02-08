@@ -53,8 +53,8 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import kotlin.math.max
 
-private const val UDP_PORT = 4210 // Must match repository root ESP32_CueSight_Final.ino
-private const val DEFAULT_WEBSOCKET_PORT = 8888 // Must match repository root ESP32_CueSight_Final.ino
+private const val UDP_PORT = 4210 // Must match ESP32 firmware constants
+private const val DEFAULT_WEBSOCKET_PORT = 8888 // Must match ESP32 firmware constants
 private const val FRAME_TIMEOUT_MS = 5_000L
 private const val FRAME_LOSS_WINDOW_MS = 10_000L
 private const val TARGET_FPS = 12f
@@ -62,8 +62,9 @@ private const val SESSION_TIMEOUT_MS = 60 * 60 * 1000L
 private const val BACKGROUND_TIMEOUT_MS = 5 * 60 * 1000L
 private const val RECONNECT_TIMEOUT_MS = 30_000L
 private const val CONNECTION_RETRY_LIMIT = 3
-private const val HANDSHAKE_TIMEOUT_MS = 3_000L
+private const val WEBSOCKET_HANDSHAKE_TIMEOUT_MS = 3_000L
 private const val PING_INTERVAL_MS = 10_000L
+private const val MIN_EMOTION_CONFIDENCE = 0.6f
 private const val NOTIFICATION_CHANNEL_ID = "session_progress"
 private const val NOTIFICATION_ID = 1001
 
@@ -501,7 +502,7 @@ class SessionViewModel(
                 connectionResult.await()
             } ?: false
             if (!opened) return@withContext false
-            withTimeoutOrNull(HANDSHAKE_TIMEOUT_MS) {
+            withTimeoutOrNull(WEBSOCKET_HANDSHAKE_TIMEOUT_MS) {
                 handshakeResult.await()
             } ?: false
         }
@@ -713,7 +714,7 @@ class SessionViewModel(
             )
             return
         }
-        val lowConfidence = prediction.confidence < 0.6f
+        val lowConfidence = prediction.confidence < MIN_EMOTION_CONFIDENCE
         lastPredictionLabel = prediction.label
 
         val stableEmotion = emotionStabilizer.update(face.trackingId, prediction.label)
@@ -770,7 +771,7 @@ class SessionViewModel(
         }
         val maxIndex = probabilities.indices.maxByOrNull { probabilities[it] } ?: return null
         val confidence = probabilities[maxIndex]
-        if (confidence < 0.6f) return null
+        if (confidence < MIN_EMOTION_CONFIDENCE) return null
         val label = classifier.labels.getOrNull(maxIndex) ?: "Neutral"
         return EmotionPrediction(label, confidence, null, null, null)
     }
@@ -893,7 +894,7 @@ class SessionViewModel(
 
     private fun parseDiscoveryMessage(message: String): DiscoveredDevice? {
         val parts = message.split("|", limit = 3)
-        if (parts.size < 3 || parts[0] != "CUESIGHT") return null
+        if (parts.size != 3 || parts[0] != "CUESIGHT") return null
         val ipAddress = parts[1]
         val port = parts[2].toIntOrNull() ?: DEFAULT_WEBSOCKET_PORT
         return DiscoveredDevice(ipAddress = ipAddress, webSocketPort = port)

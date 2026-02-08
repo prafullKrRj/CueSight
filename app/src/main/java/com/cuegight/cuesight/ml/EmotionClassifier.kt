@@ -49,6 +49,7 @@ class EmotionClassifier(context: Context) : Closeable {
     }
 
     companion object {
+        // Normalize RGB from [0, 255] to [-1, 1] for MobileNetV3-style inputs.
         private const val INPUT_SIZE = 224
         private const val CHANNELS = 3
         private const val BATCH_SIZE = 1

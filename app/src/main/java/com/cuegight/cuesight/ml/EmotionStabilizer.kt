@@ -1,5 +1,8 @@
 package com.cuegight.cuesight.ml
 
+/**
+ * Smooths emotion predictions by requiring a majority vote over a rolling window.
+ */
 class EmotionStabilizer(
     private val windowSize: Int = 5,
     private val minConsensus: Int = 3,

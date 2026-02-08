@@ -51,8 +51,8 @@
 const char* ssid = "YourWiFiSSID";           // TODO: Change this
 const char* password = "YourWiFiPassword";   // TODO: Change this
 
-#define UDP_PORT 4210
-#define WEBSOCKET_PORT 8888
+#define UDP_PORT 4210        // Must match Android UDP discovery port
+#define WEBSOCKET_PORT 8888  // Must match Android WebSocket port
 
 // ============================================================================
 // GLOBALS
@@ -253,6 +253,10 @@ void onWebSocketEvent(uint8_t client_num, WStype_t type, uint8_t* payload, size_
 // ============================================================================
 // UDP DISCOVERY HANDLER
 // ============================================================================
+String discoveryMessage() {
+  return "CUESIGHT|" + WiFi.localIP().toString() + "|" + String(WEBSOCKET_PORT);
+}
+
 void handleDiscovery() {
   int packetSize = udp.parsePacket();
   if (packetSize) {
@@ -263,7 +267,7 @@ void handleDiscovery() {
     }
     
     if (strcmp(incomingPacket, "DISCOVER_CUESIGHT") == 0) {
-      String response = "CUESIGHT|" + WiFi.localIP().toString() + "|" + String(WEBSOCKET_PORT);
+      String response = discoveryMessage();
       udp.beginPacket(udp.remoteIP(), udp.remotePort());
       udp.write((uint8_t*)response.c_str(), response.length());
       udp.endPacket();
@@ -279,7 +283,7 @@ void broadcastDiscovery() {
     return;
   }
   lastBroadcast = now;
-  String message = "CUESIGHT|" + WiFi.localIP().toString() + "|" + String(WEBSOCKET_PORT);
+  String message = discoveryMessage();
   udp.beginPacket(IPAddress(255, 255, 255, 255), UDP_PORT);
   udp.write((uint8_t*)message.c_str(), message.length());
   udp.endPacket();
@@ -315,7 +319,7 @@ bool initCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_QVGA;
-  config.jpeg_quality = 12;
+  config.jpeg_quality = 12; // ESP32 scale: lower is higher quality
   config.fb_count = 1;
   config.grab_mode = CAMERA_GRAB_LATEST;
   // =====================================
