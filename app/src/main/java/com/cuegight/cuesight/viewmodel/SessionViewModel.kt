@@ -53,8 +53,8 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import kotlin.math.max
 
-private const val UDP_PORT = 4210
-private const val DEFAULT_WEBSOCKET_PORT = 8888
+private const val UDP_PORT = 4210 // Must match ESP32_CueSight_Final.ino
+private const val DEFAULT_WEBSOCKET_PORT = 8888 // Must match ESP32_CueSight_Final.ino
 private const val FRAME_TIMEOUT_MS = 5_000L
 private const val FRAME_LOSS_WINDOW_MS = 10_000L
 private const val TARGET_FPS = 12f

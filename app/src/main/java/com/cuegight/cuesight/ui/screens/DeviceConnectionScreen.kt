@@ -52,7 +52,7 @@ fun DeviceConnectionScreen(
                 title = { Text("Connect to CueSight") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Navigate back")
                     }
                 }
             )

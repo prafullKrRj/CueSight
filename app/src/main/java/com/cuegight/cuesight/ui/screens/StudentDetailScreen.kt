@@ -590,8 +590,8 @@ private fun calculateTrend(points: List<AccuracyPoint>): TrendResult? {
     val ys = points.map { it.accuracy }
     val sumX = xs.sum()
     val sumY = ys.sum()
-    val sumXY = xs.zip(ys).sumOf { it.first * it.second }
-    val sumX2 = xs.sumOf { it * it }
+    val sumXY = xs.zip(ys).sumOf { (it.first * it.second).toDouble() }.toFloat()
+    val sumX2 = xs.sumOf { (it * it).toDouble() }.toFloat()
     val denominator = (n * sumX2) - (sumX * sumX)
     if (denominator == 0f) return null
     val slope = ((n * sumXY) - (sumX * sumY)) / denominator
