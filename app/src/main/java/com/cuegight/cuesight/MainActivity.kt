@@ -31,8 +31,18 @@ fun CueSightApp() {
     
     NavHost(
         navController = navController,
-        startDestination = Screen.Dashboard.route
+        startDestination = Screen.Splash.route
     ) {
+        composable(Screen.Splash.route) {
+            SplashScreen(
+                onComplete = {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(Screen.Dashboard.route) {
             DashboardScreen(
                 onNavigateToStudents = {
@@ -74,7 +84,28 @@ fun CueSightApp() {
                 studentId = studentId,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToSession = { id, mode ->
-                    navController.navigate(Screen.Session.createRoute(id, mode))
+                    navController.navigate(Screen.Connection.createRoute(id, mode))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.Connection.route,
+            arguments = listOf(
+                navArgument("studentId") { type = NavType.LongType },
+                navArgument("mode") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
+            val mode = backStackEntry.arguments?.getString("mode") ?: "PRACTICE"
+            DeviceConnectionScreen(
+                studentId = studentId,
+                mode = mode,
+                onNavigateBack = { navController.popBackStack() },
+                onConnected = {
+                    navController.navigate(Screen.Session.createRoute(studentId, mode)) {
+                        popUpTo(Screen.Connection.route) { inclusive = true }
+                    }
                 }
             )
         }

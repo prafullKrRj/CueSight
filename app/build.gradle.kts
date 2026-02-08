@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.java.websocket)
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation(libs.tensorflow.lite)
     
     // Room Database
     implementation(libs.androidx.room.runtime)

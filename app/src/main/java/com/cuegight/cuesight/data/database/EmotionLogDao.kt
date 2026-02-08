@@ -1,6 +1,9 @@
 package com.cuegight.cuesight.data.database
 
 import androidx.room.*
+import com.cuegight.cuesight.data.model.AccuracyPoint
+import com.cuegight.cuesight.data.model.ConfusionPair
+import com.cuegight.cuesight.data.model.EmotionAccuracy
 import com.cuegight.cuesight.data.model.EmotionFrequency
 import com.cuegight.cuesight.data.model.EmotionLog
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +33,44 @@ interface EmotionLogDao {
         ORDER BY count DESC
     """)
     suspend fun getEmotionFrequency(sessionId: Long): List<EmotionFrequency>
+
+    @Query("""
+        SELECT emotion AS aiDetected, studentGuess, COUNT(*) as count
+        FROM emotion_logs
+        INNER JOIN sessions ON emotion_logs.sessionId = sessions.id
+        WHERE sessions.studentId = :studentId
+          AND studentGuess IS NOT NULL
+        GROUP BY emotion, studentGuess
+        ORDER BY count DESC
+    """)
+    fun getConfusionMatrixData(studentId: Long): Flow<List<ConfusionPair>>
+
+    @Query("""
+        SELECT sessionId,
+               MIN(timestamp) as date,
+               (SUM(CASE WHEN isCorrect THEN 1 ELSE 0 END) * 1.0 / COUNT(*)) as accuracy
+        FROM emotion_logs
+        INNER JOIN sessions ON emotion_logs.sessionId = sessions.id
+        WHERE sessions.studentId = :studentId
+          AND isCorrect IS NOT NULL
+        GROUP BY sessionId
+        ORDER BY date ASC
+    """)
+    fun getAccuracyOverTime(studentId: Long): Flow<List<AccuracyPoint>>
+
+    @Query("""
+        SELECT emotion,
+               COUNT(*) as totalCount,
+               SUM(CASE WHEN isCorrect THEN 1 ELSE 0 END) as correctCount,
+               (SUM(CASE WHEN isCorrect THEN 1 ELSE 0 END) * 1.0 / COUNT(*)) as accuracy
+        FROM emotion_logs
+        INNER JOIN sessions ON emotion_logs.sessionId = sessions.id
+        WHERE sessions.studentId = :studentId
+          AND isCorrect IS NOT NULL
+        GROUP BY emotion
+        ORDER BY totalCount DESC
+    """)
+    fun getEmotionAccuracy(studentId: Long): Flow<List<EmotionAccuracy>>
     
     @Delete
     suspend fun deleteEmotion(emotion: EmotionLog)

@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">CueSight</string>
     <string name="progress_emotions_label">Emotions detected</string>
+    <string name="accuracy_trend_label">Accuracy trend</string>
 </resources>

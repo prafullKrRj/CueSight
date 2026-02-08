@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.cuegight.cuesight.data.model.SessionMode
+import com.cuegight.cuesight.data.model.AccuracyPoint
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
@@ -36,6 +37,9 @@ fun StudentDetailScreen(
 ) {
     val student by viewModel.getStudentById(studentId).collectAsState(initial = null)
     val sessions by viewModel.getSessionsByStudent(studentId).collectAsState(initial = emptyList())
+    val confusionPairs by viewModel.getConfusionMatrix(studentId).collectAsState(initial = emptyList())
+    val accuracyPoints by viewModel.getAccuracyTrend(studentId).collectAsState(initial = emptyList())
+    val emotionAccuracy by viewModel.getEmotionAccuracy(studentId).collectAsState(initial = emptyList())
     val orderedSessions = remember(sessions) { sessions.sortedBy { it.startTime } }
     val sessionEntries = remember(orderedSessions) {
         orderedSessions.mapIndexed { index, session ->
@@ -70,6 +74,24 @@ fun StudentDetailScreen(
         }
         LineData(dataSet)
     }
+    val accuracyEntries = remember(accuracyPoints) {
+        accuracyPoints.mapIndexed { index, point ->
+            Entry(index.toFloat(), point.accuracy * 100f)
+        }
+    }
+    val accuracyChartLabel = stringResource(R.string.accuracy_trend_label)
+    val accuracyLineData = remember(accuracyEntries, accuracyChartLabel, lineColor) {
+        val dataSet = LineDataSet(accuracyEntries, accuracyChartLabel).apply {
+            color = lineColor
+            setCircleColor(lineColor)
+            lineWidth = 2f
+            circleRadius = 3f
+            setDrawValues(false)
+            mode = LineDataSet.Mode.LINEAR
+        }
+        LineData(dataSet)
+    }
+    val trendResult = remember(accuracyPoints) { calculateTrend(accuracyPoints) }
     
     Scaffold(
         topBar = {
@@ -246,6 +268,167 @@ fun StudentDetailScreen(
                     }
                 }
                 
+                item {
+                    Text(
+                        text = "Analytics & Reporting",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp)
+                        ) {
+                            Text(
+                                text = "Accuracy Trend",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            if (accuracyPoints.isEmpty()) {
+                                Text(
+                                    text = "No practice results yet. Log student guesses to see accuracy trends.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                            } else {
+                                AndroidView(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp),
+                                    factory = { context ->
+                                        LineChart(context).apply {
+                                            description.isEnabled = false
+                                            legend.isEnabled = false
+                                            setTouchEnabled(false)
+                                            axisRight.isEnabled = false
+                                            xAxis.position = XAxis.XAxisPosition.BOTTOM
+                                            xAxis.setDrawGridLines(false)
+                                            xAxis.granularity = 1f
+                                            axisLeft.axisMinimum = 0f
+                                            axisLeft.axisMaximum = 100f
+                                        }
+                                    },
+                                    update = { chart ->
+                                        chart.xAxis.textColor = axisColor
+                                        chart.axisLeft.textColor = axisColor
+                                        chart.data = accuracyLineData
+                                        chart.invalidate()
+                                    }
+                                )
+                                trendResult?.let { trend ->
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "Overall trend: ${trend.slopeLabel}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "Predicted next session: ${trend.predictedLabel}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Text(
+                                text = "Per-Emotion Accuracy",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            if (emotionAccuracy.isEmpty()) {
+                                Text(
+                                    text = "No accuracy data yet.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                            } else {
+                                emotionAccuracy.forEach { accuracy ->
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            text = "${accuracy.emotion}: ${(accuracy.accuracy * 100).toInt()}%",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        LinearProgressIndicator(
+                                            progress = accuracy.accuracy.coerceIn(0f, 1f),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Text(
+                                text = "Confusion Matrix Highlights",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            val topConfusions = remember(confusionPairs) {
+                                confusionPairs
+                                    .filter { it.aiDetected != it.studentGuess }
+                                    .take(3)
+                            }
+                            if (topConfusions.isEmpty()) {
+                                Text(
+                                    text = "No confusion patterns yet.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                            } else {
+                                topConfusions.forEach { pair ->
+                                    Text(
+                                        text = "${pair.studentGuess} confused with ${pair.aiDetected} (${pair.count}x)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Session Modes Section
                 item {
                     Text(
@@ -393,4 +576,29 @@ private fun formatDuration(totalSeconds: Long): String {
     if (hours > 0) parts.add("${hours}h")
     if (minutes > 0) parts.add("${minutes}m")
     return parts.joinToString(" ")
+}
+
+private data class TrendResult(
+    val slopeLabel: String,
+    val predictedLabel: String
+)
+
+private fun calculateTrend(points: List<AccuracyPoint>): TrendResult? {
+    if (points.size < 2) return null
+    val n = points.size
+    val xs = points.indices.map { it.toFloat() }
+    val ys = points.map { it.accuracy }
+    val sumX = xs.sum()
+    val sumY = ys.sum()
+    val sumXY = xs.zip(ys).sumOf { it.first * it.second }
+    val sumX2 = xs.sumOf { it * it }
+    val denominator = (n * sumX2) - (sumX * sumX)
+    if (denominator == 0f) return null
+    val slope = ((n * sumXY) - (sumX * sumY)) / denominator
+    val intercept = (sumY - slope * sumX) / n
+    val predictedNext = (intercept + slope * n).coerceIn(0f, 1f)
+    val slopePercent = slope * 100f
+    val slopeLabel = "${if (slopePercent >= 0) "+" else ""}${"%.1f".format(slopePercent)}% per session"
+    val predictedLabel = "${(predictedNext * 100).toInt()}% accuracy"
+    return TrendResult(slopeLabel = slopeLabel, predictedLabel = predictedLabel)
 }

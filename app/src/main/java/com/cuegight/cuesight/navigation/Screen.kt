@@ -1,9 +1,13 @@
 package com.cuegight.cuesight.navigation
 
 sealed class Screen(val route: String) {
+    object Splash : Screen("splash")
     object Dashboard : Screen("dashboard")
     object Students : Screen("students")
     object AddStudent : Screen("add_student")
+    object Connection : Screen("connection/{studentId}/{mode}") {
+        fun createRoute(studentId: Long, mode: String) = "connection/$studentId/$mode"
+    }
     object StudentDetail : Screen("student_detail/{studentId}") {
         fun createRoute(studentId: Long) = "student_detail/$studentId"
     }

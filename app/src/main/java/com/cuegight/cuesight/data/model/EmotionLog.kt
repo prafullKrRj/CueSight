@@ -27,6 +27,10 @@ data class EmotionLog(
     val timestamp: Long = System.currentTimeMillis(),
     val confidence: Float = 0f,
     val frameQuality: FrameQuality = FrameQuality.OK,
+    val studentGuess: String? = null,
+    val isCorrect: Boolean? = null,
+    val isStable: Boolean = false,
+    val trackingId: Int? = null,
     val smilingProbability: Float? = null,
     val leftEyeOpenProbability: Float? = null,
     val rightEyeOpenProbability: Float? = null

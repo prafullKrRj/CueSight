@@ -3,7 +3,6 @@ package com.cuegight.cuesight.ui.screens
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,8 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -37,8 +34,11 @@ fun SessionScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
-    var ipAddress by remember { mutableStateOf(state.ipAddress) }
-    var showIpDialog by remember { mutableStateOf(true) }
+    var showGuessDialog by remember { mutableStateOf(false) }
+    var selectedGuess by remember { mutableStateOf("Happy") }
+    val emotionOptions = remember {
+        listOf("Happy", "Sad", "Angry", "Surprise", "Neutral")
+    }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -53,7 +53,9 @@ fun SessionScreen(
     }
     
     LaunchedEffect(Unit) {
-        viewModel.startSession(studentId, sessionMode)
+        if (!state.isStreaming && !state.isConnecting) {
+            viewModel.startStreaming()
+        }
     }
 
     LaunchedEffect(state.toastMessage) {
@@ -91,29 +93,41 @@ fun SessionScreen(
         }
     }
     
-    if (showIpDialog) {
+    if (showGuessDialog) {
         AlertDialog(
-            onDismissRequest = { },
-            title = { Text("ESP32-CAM IP Address") },
+            onDismissRequest = { showGuessDialog = false },
+            title = { Text("Log Student Guess") },
             text = {
-                Column {
-                    Text("Enter the IP address of your ESP32-CAM device:")
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = ipAddress,
-                        onValueChange = { ipAddress = it },
-                        label = { Text("IP Address") },
-                        placeholder = { Text("e.g., 192.168.1.100") },
-                        singleLine = true
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    emotionOptions.forEach { option ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            RadioButton(
+                                selected = selectedGuess == option,
+                                onClick = { selectedGuess = option }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(option)
+                        }
+                    }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    viewModel.setIpAddress(ipAddress)
-                    showIpDialog = false
-                }) {
-                    Text("Connect")
+                Button(
+                    onClick = {
+                        viewModel.logStudentGuess(selectedGuess)
+                        showGuessDialog = false
+                    },
+                    enabled = state.canSubmitFeedback
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGuessDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -277,45 +291,47 @@ fun SessionScreen(
                 }
             }
             
-            // Video Stream Section
+            // Device Status Section
             item {
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(400.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (state.currentFrame != null) {
-                            Image(
-                                bitmap = state.currentFrame!!.asImageBitmap(),
-                                contentDescription = "Camera Stream",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Fit
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Wifi,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        } else {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                if (state.isStreaming) {
-                                    CircularProgressIndicator()
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text("Loading stream...")
-                                } else {
-                                    Icon(
-                                        Icons.Default.Videocam,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(64.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text("Press Start to begin streaming")
-                                }
-                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Device Status",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = state.connectionStatus.ifEmpty { "Connecting..." },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        state.discoveredDevice?.let { device ->
+                            Text(
+                                text = "ESP32: ${device.ipAddress}:${device.webSocketPort}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+                        if (state.isConnecting) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                     }
                 }
@@ -451,39 +467,8 @@ fun SessionScreen(
                 }
             }
             
-            // Control Buttons
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { viewModel.startStreaming() },
-                        enabled = !state.isStreaming && !state.connectionLost && !state.isReconnecting,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Start")
-                    }
-                    
-                    Button(
-                        onClick = { viewModel.stopStreaming() },
-                        enabled = state.isStreaming,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Icon(Icons.Default.Stop, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Stop")
-                    }
-                }
-            }
-            
             // LED Control
-            if (state.isStreaming) {
+            if (state.isStreaming && state.handshakeComplete) {
                 item {
                     Text(
                         "Manual LED Control",
@@ -521,7 +506,7 @@ fun SessionScreen(
             if (state.isStreaming && sessionMode == SessionMode.PRACTICE) {
                 item {
                     Text(
-                        "Practice Feedback",
+                        "Practice Logging",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -532,24 +517,17 @@ fun SessionScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = { viewModel.sendFeedback("CORRECT") },
+                        Button(
+                            onClick = {
+                                selectedGuess = emotionOptions.first()
+                                showGuessDialog = true
+                            },
                             enabled = state.canSubmitFeedback,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null)
+                            Icon(Icons.Default.Edit, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Correct")
-                        }
-
-                        OutlinedButton(
-                            onClick = { viewModel.sendFeedback("WRONG") },
-                            enabled = state.canSubmitFeedback,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.Cancel, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Wrong")
+                            Text("Log Student Guess")
                         }
                     }
                 }
@@ -588,10 +566,19 @@ fun SessionScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                log.emotion,
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                            Column {
+                                Text(
+                                    log.emotion,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                log.studentGuess?.let { guess ->
+                                    Text(
+                                        text = "Guess: $guess • ${if (log.isCorrect == true) "Correct" else "Incorrect"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
                             Text(
                                 java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                                     .format(java.util.Date(log.timestamp)),

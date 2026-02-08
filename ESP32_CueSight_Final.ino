@@ -1,17 +1,17 @@
 /*
  * ============================================================================
- * CueSight ESP32-CAM - Optimized RAW GRAYSCALE Streaming
+ * CueSight ESP32-CAM - Optimized JPEG WebSocket Streaming
  * ============================================================================
  * 
  * Features:
- * - RAW GRAYSCALE 160x120 @ 15-20 FPS (optimized for speed)
- * - WebSocket RAW streaming (frame-only, no MJPEG)
+ * - JPEG QVGA 320x240 @ 10-12 FPS (optimized for reliability)
+ * - WebSocket JPEG streaming (frame-only, no HTTP/MJPEG)
  * - OLED display for status
  * - LED control with emotion feedback
  * - Session mode support (Teaching/Practice/Idle)
  * - Auto WiFi reconnection
  * 
- * Camera Config: Optimized GC2145 settings from user spec
+ * Camera Config: Optimized GC2145 settings for JPEG
  * ============================================================================
  */
 
@@ -51,7 +51,7 @@
 const char* ssid = "YourWiFiSSID";           // TODO: Change this
 const char* password = "YourWiFiPassword";   // TODO: Change this
 
-#define UDP_PORT 37020
+#define UDP_PORT 4210
 #define WEBSOCKET_PORT 8888
 
 // ============================================================================
@@ -197,6 +197,10 @@ void onWebSocketEvent(uint8_t client_num, WStype_t type, uint8_t* payload, size_
         } else if (message == "STREAM:STOP") {
           streamingActive = false;
           Serial.println("[WS] Streaming stopped");
+        } else if (message == "HELLO") {
+          webSocket.sendTXT(client_num, "HELLO_ACK");
+        } else if (message == "PING") {
+          webSocket.sendTXT(client_num, "PONG");
         } else if (message.startsWith("EMOTION:")) {
           String emotion = message.substring(8);
           emotion.trim();
@@ -259,7 +263,7 @@ void handleDiscovery() {
     }
     
     if (strcmp(incomingPacket, "DISCOVER_CUESIGHT") == 0) {
-      String response = "CUESIGHT_ESP32:" + WiFi.localIP().toString();
+      String response = "CUESIGHT|" + WiFi.localIP().toString() + "|" + String(WEBSOCKET_PORT);
       udp.beginPacket(udp.remoteIP(), udp.remotePort());
       udp.write((uint8_t*)response.c_str(), response.length());
       udp.endPacket();
@@ -268,8 +272,21 @@ void handleDiscovery() {
   }
 }
 
+void broadcastDiscovery() {
+  static unsigned long lastBroadcast = 0;
+  unsigned long now = millis();
+  if (now - lastBroadcast < 2000) {
+    return;
+  }
+  lastBroadcast = now;
+  String message = "CUESIGHT|" + WiFi.localIP().toString() + "|" + String(WEBSOCKET_PORT);
+  udp.beginPacket(IPAddress(255, 255, 255, 255), UDP_PORT);
+  udp.write((uint8_t*)message.c_str(), message.length());
+  udp.endPacket();
+}
+
 // ============================================================================
-// CAMERA INITIALIZATION - RAW GRAYSCALE OPTIMIZED
+// CAMERA INITIALIZATION - JPEG QVGA OPTIMIZED
 // ============================================================================
 bool initCamera() {
   camera_config_t config;
@@ -294,19 +311,19 @@ bool initCamera() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   
-  // ======== RAW GRAYSCALE OPTIMIZED (from user spec) ========
-  config.xclk_freq_hz = 20000000;              // 🔥 20MHz
-  config.pixel_format = PIXFORMAT_GRAYSCALE;   // 🔥 RAW GRAYSCALE (no conversion)
-  config.frame_size = FRAMESIZE_QQVGA;         // 🔥 160x120 (19,200 bytes per frame)
-  config.jpeg_quality = 10;                    // Not used in raw mode
-  config.fb_count = 2;                         // 🔥 Double buffer
-  config.grab_mode = CAMERA_GRAB_LATEST;       // 🔥 Skip old frames
-  // =========================================
+  // ======== JPEG QVGA OPTIMIZED ========
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+  config.frame_size = FRAMESIZE_QVGA;
+  config.jpeg_quality = 12;
+  config.fb_count = 1;
+  config.grab_mode = CAMERA_GRAB_LATEST;
+  // =====================================
   
   if (psramFound()) {
     config.fb_location = CAMERA_FB_IN_PSRAM;
-    config.fb_count = 2;
-    Serial.println("[CAM] Using PSRAM - 2 frame buffers");
+    config.fb_count = 1;
+    Serial.println("[CAM] Using PSRAM - 1 frame buffer");
   } else {
     config.fb_location = CAMERA_FB_IN_DRAM;
     config.fb_count = 1;
@@ -321,8 +338,8 @@ bool initCamera() {
   }
   
   sensor_t *s = esp_camera_sensor_get();
-  s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
-  s->set_framesize(s, FRAMESIZE_QQVGA);
+  s->set_pixformat(s, PIXFORMAT_JPEG);
+  s->set_framesize(s, FRAMESIZE_QVGA);
   
   // Optimize sensor for speed (from user spec)
   s->set_brightness(s, 1);
@@ -335,10 +352,9 @@ bool initCamera() {
   s->set_special_effect(s, 0);
   s->set_lenc(s, 1);
   
-  Serial.println("[CAM] Initialized: RAW GRAYSCALE at QQVGA (160x120)");
-  Serial.println("[CAM] Mode: ZERO conversion overhead!");
-  Serial.println("[CAM] Expected FPS: 15-20 (limited by WiFi bandwidth)");
-  Serial.println("[CAM] Frame size: ~19 KB (160x120 pixels)");
+  Serial.println("[CAM] Initialized: JPEG at QVGA (320x240)");
+  Serial.println("[CAM] Expected FPS: 10-12 (limited by WiFi bandwidth)");
+  Serial.println("[CAM] Frame size: ~20 KB (JPEG)");
   
   return true;
 }
@@ -397,7 +413,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
   Serial.println("🚀 CueSight ESP32-CAM");
-  Serial.println("   RAW GRAYSCALE Optimized");
+  Serial.println("   JPEG QVGA Optimized");
   Serial.println("========================================\n");
   
   // LED setup
@@ -462,7 +478,7 @@ void setup() {
   Serial.println("\n========================================");
   Serial.println("✅ System Ready");
   Serial.printf("🔌 WebSocket: ws://%s:%d\n", WiFi.localIP().toString().c_str(), WEBSOCKET_PORT);
-  Serial.println("📷 Camera: GRAYSCALE 160x120 @ 15-20 FPS");
+  Serial.println("📷 Camera: JPEG 320x240 @ 10-12 FPS");
   Serial.println("========================================\n");
   
   Serial.printf("[MEM] Free heap: %u bytes\n", esp_get_free_heap_size());
@@ -507,6 +523,7 @@ void loop() {
   
   // Handle UDP discovery
   handleDiscovery();
+  broadcastDiscovery();
   
   // WebSocket ping
   unsigned long now = millis();
@@ -515,7 +532,7 @@ void loop() {
     lastPingTime = now;
   }
   
-  // WebSocket RAW streaming (if active)
+  // WebSocket JPEG streaming (if active)
   if (streamingActive && connectedClient != 255) {
     camera_fb_t* fb = esp_camera_fb_get();
     

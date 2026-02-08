@@ -22,6 +22,6 @@ val appModule = module {
     
     // ViewModels
     viewModel { DashboardViewModel(get(), get(), get()) }
-    viewModel { StudentViewModel(get(), get()) }
-    viewModel { SessionViewModel(get(), get()) }
+    viewModel { StudentViewModel(get(), get(), get()) }
+    viewModel { SessionViewModel(get(), get(), androidContext()) }
 }

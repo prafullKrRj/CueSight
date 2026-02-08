@@ -174,9 +174,9 @@ Android behavior:
 - Teacher taps "Connect" to initiate the TCP/WebSocket handshake
 ```
 
-### 2.2 Video Streaming: MJPEG over HTTP (ESP32 → Android)
+### 2.2 Video Streaming (Deprecated)
 
-**Why MJPEG:** Lowest memory footprint on ESP32-CAM. No encoding library needed. The ESP32-CAM Arduino library has native MJPEG streaming. Each frame is a complete JPEG — no inter-frame dependency, so dropped frames don't cascade.
+**WebSocket-only update:** HTTP/MJPEG streaming is removed. The ESP32 sends **binary JPEG frames over WebSocket** on demand for ML processing. The Android app does not render a live video feed in the UI.
 
 ```
 ESP32-CAM:
@@ -425,7 +425,7 @@ Tech stack:
   - Async: Kotlin Coroutines + Flow
   - DB: Room
   - ML: TensorFlow Lite (MobileNetV3), ML Kit Face Detection
-  - Network: OkHttp (MJPEG stream parsing), OkHttp WebSocket client
+  - Network: OkHttp WebSocket client (no HTTP/MJPEG)
   - Image: Coil (for any static images in analytics)
 
 Package structure:
@@ -433,7 +433,7 @@ Package structure:
   ├── di/                      -- Hilt modules
   ├── data/
   │   ├── db/                  -- Room entities, DAOs, database
-  │   ├── network/             -- UDP discovery, MJPEG client, WebSocket client
+  │   ├── network/             -- UDP discovery, WebSocket client
   │   └── repository/          -- Repository implementations
   ├── domain/
   │   ├── model/               -- Domain models
@@ -571,7 +571,7 @@ UI Elements:
 
 On "Connect" tap:
   1. Attempt to open WebSocket connection to ws://<IP>:82
-  2. Attempt to open MJPEG stream from http://<IP>:81/stream
+  2. Connect WebSocket to receive binary JPEG frames when requested
   3. Show progress indicator: "Connecting..."
   4. On success:
      - Show green checkmark: "Connected ✓"
@@ -599,7 +599,7 @@ This is where the teacher spends 30-40 minutes. It has **two sub-modes** toggled
   │                                  │
   │  ┌────────────────────────────┐  │
   │  │                            │  │
-  │  │    [LIVE VIDEO FEED]       │  │  ← MJPEG stream rendered here
+  │  │   (No live video feed)     │  │  ← WebSocket-only frame processing
   │  │                            │  │
   │  │    ┌──────────┐            │  │  ← Bounding box around detected face
   │  │    │          │            │  │
@@ -641,7 +641,7 @@ Teaching Mode behavior:
   │                                  │
   │  ┌────────────────────────────┐  │
   │  │                            │  │
-  │  │    [LIVE VIDEO FEED]       │  │  ← Same MJPEG stream, but NO overlay
+  │  │   (No live video feed)     │  │  ← WebSocket-only frame processing
   │  │                            │  │     No bounding box, no labels visible
   │  │                            │  │
   │  │                            │  │
@@ -764,7 +764,7 @@ On "End & Save":
        practice_duration_ms = Y, total_guesses = 23, correct_guesses = 17,
        session_notes = "..." WHERE session_id = current_id
   2. Send to ESP32: {"cmd": "clear"} and close WebSocket
-  3. Close MJPEG stream
+  3. Close WebSocket connection
   4. Navigate to Session Summary screen
 ```
 
@@ -861,7 +861,8 @@ Accessible from Student Select screen (long-press student → "View Analytics") 
   │  │   persists (14 total)      │  │     Highlights cells > threshold
   │  │ ✅ Happy recognition is     │  │
   │  │   strong (87.5%)           │  │
-  │  │ 📈 Overall trend: +2.3%    │  │  ← Slope of accuracy line
+  │  │ 📈 Overall trend: +2.3%    │  │  ← Slope of accuracy line (linear regression)
+  │  │ Predicted next: 81%        │  │  ← Next-session forecast from regression
   │  │   per session              │  │
   │  └────────────────────────────┘  │
   │                                  │
@@ -910,7 +911,7 @@ BOOT SEQUENCE:
      - IP: 192.168.4.1
   5. Start UDP broadcast task (Core 0):
      - Every 2 seconds, broadcast "CUESIGHT|192.168.4.1|81|82" to 192.168.4.255:4210
-  6. Start MJPEG HTTP server on port 81:
+  6. Start WebSocket server on port 8888 (no HTTP server)
      - Endpoint: GET /stream
      - Response: multipart/x-mixed-replace
      - Capture frame → send as JPEG part → repeat
@@ -969,7 +970,7 @@ MEMORY MANAGEMENT:
   - JPEG quality: 12 (balance quality vs. size)
   - Resolution: QVGA 320x240 (DO NOT use higher — insufficient PSRAM for streaming)
   - WebSocket: max payload 256 bytes (commands are small JSON)
-  - Free camera frame buffer immediately after sending via HTTP
+  - Free camera frame buffer immediately after sending via WebSocket
   - ArduinoJson: StaticJsonDocument on stack, never dynamic allocation
 
 STREAMING IMPLEMENTATION (port 81):
@@ -989,7 +990,7 @@ STREAMING IMPLEMENTATION (port 81):
 
 DUAL-CORE TASK ASSIGNMENT:
   Core 0: UDP broadcast task (low priority, runs every 2s)
-  Core 1: Main loop — camera capture, HTTP streaming, WebSocket handling
+  Core 1: Main loop — camera capture, WebSocket handling
 */
 ```
 
@@ -1016,13 +1017,13 @@ Behavior:
 Data class: DiscoveredDevice(ip: String, streamPort: Int, cmdPort: Int)
 ```
 
-### 7.2 MJPEG Stream Client
+### 7.2 MJPEG Stream Client (Deprecated)
 
 ```
 Class: MjpegStreamClient
 
 Behavior:
-  - Use OkHttp to make GET request to http://<ip>:<streamPort>/stream
+  - Not used in WebSocket-only architecture (binary JPEG frames over WebSocket)
   - Parse multipart response manually:
     - Read boundary markers
     - Extract Content-Length header for each part
@@ -1276,7 +1277,7 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 
-    // OkHttp (MJPEG + WebSocket)
+    // OkHttp WebSocket (no HTTP/MJPEG)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Charts (for analytics)

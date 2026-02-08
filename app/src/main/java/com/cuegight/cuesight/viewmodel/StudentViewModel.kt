@@ -3,6 +3,7 @@ package com.cuegight.cuesight.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.data.model.Student
+import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.data.repository.StudentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,8 @@ data class StudentListState(
 
 class StudentViewModel(
     private val studentRepository: StudentRepository,
-    private val sessionRepository: SessionRepository
+    private val sessionRepository: SessionRepository,
+    private val emotionLogRepository: EmotionLogRepository
 ) : ViewModel() {
     
     private val _state = MutableStateFlow(StudentListState())
@@ -73,4 +75,10 @@ class StudentViewModel(
     fun getStudentById(id: Long) = studentRepository.getStudentByIdFlow(id)
 
     fun getSessionsByStudent(studentId: Long) = sessionRepository.getSessionsByStudent(studentId)
+
+    fun getConfusionMatrix(studentId: Long) = emotionLogRepository.getConfusionMatrixData(studentId)
+
+    fun getAccuracyTrend(studentId: Long) = emotionLogRepository.getAccuracyOverTime(studentId)
+
+    fun getEmotionAccuracy(studentId: Long) = emotionLogRepository.getEmotionAccuracy(studentId)
 }

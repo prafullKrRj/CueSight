@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresPermission
@@ -22,6 +24,8 @@ import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
+import com.cuegight.cuesight.ml.EmotionClassifier
+import com.cuegight.cuesight.ml.EmotionStabilizer
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -49,19 +53,24 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import kotlin.math.max
 
-private const val UDP_PORT = 37020
-private const val WEBSOCKET_PORT = 8888
-private const val FRAME_WIDTH = 160
-private const val FRAME_HEIGHT = 120
+private const val UDP_PORT = 4210
+private const val DEFAULT_WEBSOCKET_PORT = 8888
 private const val FRAME_TIMEOUT_MS = 5_000L
 private const val FRAME_LOSS_WINDOW_MS = 10_000L
-private const val TARGET_FPS = 15f
+private const val TARGET_FPS = 12f
 private const val SESSION_TIMEOUT_MS = 60 * 60 * 1000L
 private const val BACKGROUND_TIMEOUT_MS = 5 * 60 * 1000L
 private const val RECONNECT_TIMEOUT_MS = 30_000L
 private const val CONNECTION_RETRY_LIMIT = 3
+private const val HANDSHAKE_TIMEOUT_MS = 3_000L
+private const val PING_INTERVAL_MS = 10_000L
 private const val NOTIFICATION_CHANNEL_ID = "session_progress"
 private const val NOTIFICATION_ID = 1001
+
+data class DiscoveredDevice(
+    val ipAddress: String,
+    val webSocketPort: Int
+)
 
 data class SessionState(
     val currentSession: Session? = null,
@@ -74,6 +83,12 @@ data class SessionState(
     val error: String = "",
     val warning: String = "",
     val ipAddress: String = "",
+    val webSocketPort: Int = DEFAULT_WEBSOCKET_PORT,
+    val discoveredDevice: DiscoveredDevice? = null,
+    val isDiscovering: Boolean = false,
+    val isConnecting: Boolean = false,
+    val handshakeComplete: Boolean = false,
+    val connectionStatus: String = "",
     val frameQuality: FrameQuality = FrameQuality.OK,
     val predictionDetail: String = "",
     val emotionStale: Boolean = false,
@@ -90,24 +105,31 @@ data class SessionState(
 
 class SessionViewModel(
     private val sessionRepository: SessionRepository,
-    private val emotionLogRepository: EmotionLogRepository
+    private val emotionLogRepository: EmotionLogRepository,
+    private val appContext: Context
 ) : ViewModel() {
 
     private val client = OkHttpClient()
     private var streamJob: Job? = null
     private var frameWatchdogJob: Job? = null
+    private var discoveryJob: Job? = null
+    private var pingJob: Job? = null
     private var webSocket: WebSocket? = null
     private var faceDetector: FaceDetector? = null
+    private var emotionClassifier: EmotionClassifier? = null
+    private val emotionStabilizer = EmotionStabilizer()
     private var activeMode: SessionMode = SessionMode.PRACTICE
     private var lastFrameReceivedAt = 0L
     private val frameTimestamps = ArrayDeque<Long>()
     private var maxFrameLossPercent = 0f
     private var lastPredictionLabel = "Neutral"
+    private var lastStableEmotion: String? = null
+    private var lastStableConfidence: Float = 0f
+    private var lastStableTrackingId: Int? = null
     private var isDetecting = false
     private var pendingReconnect = false
     private var backgroundedAt: Long? = null
-    private var pixelBuffer: IntArray? = null
-    private var reusableBitmap: Bitmap? = null
+    private var lastPongAt: Long = 0L
     private var emotionLogJob: Job? = null
 
     private val _state = MutableStateFlow(SessionState())
@@ -115,6 +137,7 @@ class SessionViewModel(
 
     init {
         initFaceDetector()
+        initEmotionClassifier()
     }
 
     private fun initFaceDetector() {
@@ -123,6 +146,7 @@ class SessionViewModel(
                 FaceDetectorOptions.Builder()
                     .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                     .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+                    .setTrackingEnabled(true)
                     .build()
             )
         } catch (e: Exception) {
@@ -132,8 +156,74 @@ class SessionViewModel(
         }
     }
 
+    private fun initEmotionClassifier() {
+        try {
+            emotionClassifier?.close()
+            emotionClassifier = EmotionClassifier(appContext)
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(
+                error = "Initialization Error: ${e.message}"
+            )
+        }
+    }
+
     fun setIpAddress(ip: String) {
-        _state.value = _state.value.copy(ipAddress = ip)
+        _state.value = _state.value.copy(
+            ipAddress = ip,
+            webSocketPort = DEFAULT_WEBSOCKET_PORT
+        )
+    }
+
+    fun setDiscoveredDevice(device: DiscoveredDevice) {
+        _state.value = _state.value.copy(
+            ipAddress = device.ipAddress,
+            webSocketPort = device.webSocketPort,
+            discoveredDevice = device
+        )
+    }
+
+    fun startDiscovery() {
+        discoveryJob?.cancel()
+        discoveryJob = viewModelScope.launch(Dispatchers.IO) {
+            _state.value = _state.value.copy(
+                isDiscovering = true,
+                connectionStatus = "Scanning for CueSight devices...",
+                discoveredDevice = null
+            )
+            try {
+                DatagramSocket(UDP_PORT).use { socket ->
+                    socket.broadcast = true
+                    socket.soTimeout = 5000
+                    val buffer = ByteArray(256)
+                    while (isActive) {
+                        val packet = DatagramPacket(buffer, buffer.size)
+                        socket.receive(packet)
+                        val message = String(packet.data, 0, packet.length)
+                        val device = parseDiscoveryMessage(message)
+                        if (device != null) {
+                            _state.value = _state.value.copy(
+                                ipAddress = device.ipAddress,
+                                webSocketPort = device.webSocketPort,
+                                discoveredDevice = device,
+                                isDiscovering = false,
+                                connectionStatus = "Device found"
+                            )
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isDiscovering = false,
+                    connectionStatus = "Discovery timed out"
+                )
+            }
+        }
+    }
+
+    fun stopDiscovery() {
+        discoveryJob?.cancel()
+        _state.value = _state.value.copy(isDiscovering = false)
     }
 
     fun startSession(studentId: Long, mode: SessionMode) {
@@ -149,6 +239,7 @@ class SessionViewModel(
 
                 val session = sessionRepository.getSessionById(sessionId)
                 _state.value = _state.value.copy(currentSession = session)
+                _state.value = _state.value.copy(connectionStatus = "Ready to connect")
 
                 emotionLogJob?.cancel()
                 emotionLogJob = viewModelScope.launch {
@@ -175,17 +266,41 @@ class SessionViewModel(
                 frameQuality = FrameQuality.OK,
                 predictionDetail = "",
                 emotionStale = false,
-                canSubmitFeedback = true
+                canSubmitFeedback = true,
+                isConnecting = true,
+                connectionStatus = "Connecting to device...",
+                handshakeComplete = false
             )
             lastFrameReceivedAt = System.currentTimeMillis()
-            val connected = connectWebSocket(_state.value.ipAddress, startStream = true)
+            val discoveredDevice = _state.value.discoveredDevice ?: discoverEsp32Device()
+            if (discoveredDevice != null) {
+                _state.value = _state.value.copy(
+                    ipAddress = discoveredDevice.ipAddress,
+                    webSocketPort = discoveredDevice.webSocketPort,
+                    discoveredDevice = discoveredDevice
+                )
+            }
+            val targetIp = discoveredDevice?.ipAddress ?: _state.value.ipAddress
+            val targetPort = discoveredDevice?.webSocketPort ?: _state.value.webSocketPort
+            val connected = if (targetIp.isNotBlank()) {
+                connectWebSocket(targetIp, targetPort, startStream = true)
+            } else {
+                false
+            }
             if (!connected) {
                 handleConnectionLost(
                     title = "Connection Lost",
                     message = "Unable to connect to ESP32. Session data is safe."
                 )
             } else {
+                _state.value = _state.value.copy(
+                    isConnecting = false,
+                    connectionStatus = "Connected",
+                    handshakeComplete = true
+                )
+                stopDiscovery()
                 startFrameWatchdog()
+                startHeartbeat()
             }
         }
     }
@@ -193,6 +308,7 @@ class SessionViewModel(
     fun stopStreaming() {
         streamJob?.cancel()
         frameWatchdogJob?.cancel()
+        pingJob?.cancel()
         sendWebSocketCommand("STREAM:STOP")
         sendWebSocketCommand("MODE:IDLE")
         webSocket?.close(1000, "Stopped")
@@ -203,7 +319,10 @@ class SessionViewModel(
             warning = "",
             connectionLost = false,
             isReconnecting = false,
-            isProcessingPaused = false
+            isProcessingPaused = false,
+            isConnecting = false,
+            handshakeComplete = false,
+            connectionStatus = "Disconnected"
         )
     }
 
@@ -239,7 +358,35 @@ class SessionViewModel(
     }
 
     fun sendShowAnswer() {
-        sendWebSocketCommand("FEEDBACK:${stripEmoji(lastPredictionLabel)}")
+        val answer = lastStableEmotion ?: lastPredictionLabel
+        sendWebSocketCommand("FEEDBACK:${stripEmoji(answer)}")
+    }
+
+    fun logStudentGuess(guess: String) {
+        val aiEmotion = lastStableEmotion ?: run {
+            _state.value = _state.value.copy(toastMessage = "Waiting for a stable detection")
+            return
+        }
+        val isCorrect = stripEmoji(aiEmotion).equals(stripEmoji(guess), ignoreCase = true)
+        viewModelScope.launch {
+            logEmotion(
+                emotion = aiEmotion,
+                confidence = lastStableConfidence,
+                frameQuality = _state.value.frameQuality,
+                smiling = null,
+                leftEyeOpen = null,
+                rightEyeOpen = null,
+                studentGuess = guess,
+                isCorrect = isCorrect,
+                isStable = true,
+                trackingId = lastStableTrackingId
+            )
+        }
+        sendWebSocketCommand(if (isCorrect) "FEEDBACK:CORRECT" else "FEEDBACK:WRONG")
+        _state.value = _state.value.copy(
+            canSubmitFeedback = false,
+            toastMessage = if (isCorrect) "Correct logged" else "Marked incorrect"
+        )
     }
 
     fun sendLEDCommand(command: String) {
@@ -251,22 +398,30 @@ class SessionViewModel(
 
     fun retryConnection() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isReconnecting = true)
+            _state.value = _state.value.copy(
+                isReconnecting = true,
+                connectionStatus = "Reconnecting..."
+            )
             pendingReconnect = true
             val success = withTimeoutOrNull(RECONNECT_TIMEOUT_MS) {
-                val discoveredIp = discoverEsp32Ip()
-                if (discoveredIp == null) {
+                val discoveredDevice = discoverEsp32Device()
+                if (discoveredDevice == null) {
                     _state.value = _state.value.copy(
                         connectionLostTitle = "Device Reset Detected",
                         connectionLostMessage = "ESP32 is not responding to discovery. It may have restarted or be unreachable."
                     )
                 }
-                val targetIp = discoveredIp ?: _state.value.ipAddress
-                if (discoveredIp != null) {
-                    _state.value = _state.value.copy(ipAddress = discoveredIp)
+                val targetIp = discoveredDevice?.ipAddress ?: _state.value.ipAddress
+                val targetPort = discoveredDevice?.webSocketPort ?: _state.value.webSocketPort
+                if (discoveredDevice != null) {
+                    _state.value = _state.value.copy(
+                        ipAddress = discoveredDevice.ipAddress,
+                        webSocketPort = discoveredDevice.webSocketPort,
+                        discoveredDevice = discoveredDevice
+                    )
                 }
                 repeat(CONNECTION_RETRY_LIMIT) { attempt ->
-                    if (connectWebSocket(targetIp, startStream = true)) {
+                    if (connectWebSocket(targetIp, targetPort, startStream = true)) {
                         return@withTimeoutOrNull true
                     }
                     delay(1000L * (attempt + 1))
@@ -279,7 +434,9 @@ class SessionViewModel(
                     connectionLost = false,
                     isReconnecting = false,
                     isProcessingPaused = false,
-                    toastMessage = "Reconnected successfully"
+                    toastMessage = "Reconnected successfully",
+                    connectionStatus = "Connected",
+                    handshakeComplete = true
                 )
             } else {
                 autoSaveInterrupted("Reconnection failed")
@@ -322,45 +479,63 @@ class SessionViewModel(
         }
     }
 
-    private suspend fun connectWebSocket(ipAddress: String, startStream: Boolean): Boolean {
+    private suspend fun connectWebSocket(
+        ipAddress: String,
+        port: Int,
+        startStream: Boolean
+    ): Boolean {
         return withContext(Dispatchers.IO) {
             val connectionResult = CompletableDeferred<Boolean>()
+            val handshakeResult = CompletableDeferred<Boolean>()
             val request = Request.Builder()
-                .url("ws://$ipAddress:$WEBSOCKET_PORT")
+                .url("ws://$ipAddress:$port")
                 .build()
 
             webSocket?.close(1000, "Reconnecting")
             webSocket = client.newWebSocket(
                 request,
-                createWebSocketListener(connectionResult, startStream)
+                createWebSocketListener(connectionResult, handshakeResult, startStream)
             )
 
-            withTimeoutOrNull(10_000L) {
+            val opened = withTimeoutOrNull(10_000L) {
                 connectionResult.await()
+            } ?: false
+            if (!opened) return@withContext false
+            withTimeoutOrNull(HANDSHAKE_TIMEOUT_MS) {
+                handshakeResult.await()
             } ?: false
         }
     }
 
     private fun createWebSocketListener(
         connectionResult: CompletableDeferred<Boolean>,
+        handshakeResult: CompletableDeferred<Boolean>,
         startStream: Boolean
     ): WebSocketListener {
         return object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 connectionResult.complete(true)
-                sendWebSocketCommand("MODE:${activeMode.name}")
-                if (activeMode == SessionMode.PRACTICE) {
-                    sendWebSocketCommand("EMOTION:HIDDEN")
-                }
-                if (startStream) {
-                    sendWebSocketCommand("STREAM:START")
-                }
+                sendWebSocketCommand("HELLO")
                 pendingReconnect = false
                 lastFrameReceivedAt = System.currentTimeMillis()
-                startFrameWatchdog()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (text == "PONG") {
+                    lastPongAt = System.currentTimeMillis()
+                    if (!handshakeResult.isCompleted) {
+                        handshakeResult.complete(true)
+                        onHandshakeComplete(startStream)
+                    }
+                    return
+                }
+                if (text == "HELLO_ACK") {
+                    if (!handshakeResult.isCompleted) {
+                        handshakeResult.complete(true)
+                        onHandshakeComplete(startStream)
+                    }
+                    return
+                }
                 if (text.startsWith("ERROR:LOW_MEMORY")) {
                     stopStreaming()
                     _state.value = _state.value.copy(
@@ -378,6 +553,9 @@ class SessionViewModel(
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
                 }
+                if (!handshakeResult.isCompleted) {
+                    handshakeResult.complete(false)
+                }
                 if (_state.value.isStreaming && !pendingReconnect) {
                     handleConnectionLost(
                         title = "Connection Lost",
@@ -390,8 +568,22 @@ class SessionViewModel(
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
                 }
+                if (!handshakeResult.isCompleted) {
+                    handshakeResult.complete(false)
+                }
             }
         }
+    }
+
+    private fun onHandshakeComplete(startStream: Boolean) {
+        sendWebSocketCommand("MODE:${activeMode.name}")
+        if (activeMode == SessionMode.PRACTICE) {
+            sendWebSocketCommand("EMOTION:HIDDEN")
+        }
+        if (startStream) {
+            sendWebSocketCommand("STREAM:START")
+        }
+        lastPongAt = System.currentTimeMillis()
     }
 
     private fun startFrameWatchdog() {
@@ -412,6 +604,24 @@ class SessionViewModel(
         }
     }
 
+    private fun startHeartbeat() {
+        pingJob?.cancel()
+        pingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(PING_INTERVAL_MS)
+                if (!_state.value.isStreaming) continue
+                sendWebSocketCommand("PING")
+                val elapsed = System.currentTimeMillis() - lastPongAt
+                if (elapsed > PING_INTERVAL_MS * 2) {
+                    handleConnectionLost(
+                        title = "Connection Lost",
+                        message = "ESP32 heartbeat missed. Session data is safe."
+                    )
+                }
+            }
+        }
+    }
+
     private fun checkSessionTimeout() {
         val session = _state.value.currentSession ?: return
         if (System.currentTimeMillis() - session.startTime > SESSION_TIMEOUT_MS) {
@@ -420,37 +630,18 @@ class SessionViewModel(
     }
 
     private fun handleFrame(bytes: ByteArray) {
-        if (bytes.size != FRAME_WIDTH * FRAME_HEIGHT) {
-            return
-        }
         updateFrameLossStats()
         if (_state.value.isProcessingPaused) return
 
-        val bitmap = decodeFrame(bytes) ?: return
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return
         val newFrameCount = _state.value.frameCount + 1
         _state.value = _state.value.copy(
-            currentFrame = bitmap,
+            currentFrame = null,
             frameCount = newFrameCount
         )
         if (newFrameCount % 3 == 0) {
             detectEmotion(bitmap)
         }
-    }
-
-    private fun decodeFrame(bytes: ByteArray): Bitmap? {
-        val buffer = pixelBuffer ?: IntArray(bytes.size).also { pixelBuffer = it }
-        for (i in bytes.indices) {
-            val v = bytes[i].toInt() and 0xFF
-            buffer[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-        }
-        val bitmap = reusableBitmap ?: Bitmap.createBitmap(
-            FRAME_WIDTH,
-            FRAME_HEIGHT,
-            Bitmap.Config.ARGB_8888
-        ).also { reusableBitmap = it }
-        bitmap.setPixels(buffer, 0, FRAME_WIDTH, 0, 0, FRAME_WIDTH, FRAME_HEIGHT)
-        return bitmap.config?.let {
-            bitmap.copy(it, false) }
     }
 
     private fun updateFrameLossStats() {
@@ -484,7 +675,7 @@ class SessionViewModel(
         val image = InputImage.fromBitmap(bitmap, 0)
         detector.process(image)
             .addOnSuccessListener { faces ->
-                handleFaces(faces)
+                handleFaces(bitmap, faces)
             }
             .addOnFailureListener { e ->
                 Log.e("SessionViewModel", "Detection failed: ${e.message}", e)
@@ -494,98 +685,104 @@ class SessionViewModel(
             }
     }
 
-    private fun handleFaces(faces: List<Face>) {
+    private fun handleFaces(bitmap: Bitmap, faces: List<Face>) {
         if (faces.isEmpty()) {
             _state.value = _state.value.copy(
+                detectedEmotion = "No face detected",
                 frameQuality = FrameQuality.NO_FACE,
                 predictionDetail = "",
                 emotionStale = true,
                 canSubmitFeedback = activeMode != SessionMode.PRACTICE
             )
-            viewModelScope.launch {
-                logEmotion(
-                    emotion = "Neutral",
-                    confidence = 0f,
-                    frameQuality = FrameQuality.NO_FACE,
-                    smiling = null,
-                    leftEyeOpen = null,
-                    rightEyeOpen = null
-                )
+            lastStableEmotion = null
+            lastStableConfidence = 0f
+            lastStableTrackingId = null
+            if (activeMode == SessionMode.PRACTICE) {
+                sendWebSocketCommand("EMOTION:HIDDEN")
             }
             return
         }
 
         val face = faces[0]
-        val prediction = predictEmotion(face)
+        val prediction = predictEmotion(bitmap, face) ?: run {
+            _state.value = _state.value.copy(
+                frameQuality = FrameQuality.POOR,
+                predictionDetail = "Low confidence",
+                emotionStale = true,
+                canSubmitFeedback = activeMode != SessionMode.PRACTICE
+            )
+            return
+        }
         val lowConfidence = prediction.confidence < 0.6f
         lastPredictionLabel = prediction.label
 
-        if (lowConfidence && activeMode == SessionMode.TEACHING) {
-            _state.value = _state.value.copy(
-                detectedEmotion = "Uncertain",
-                frameQuality = FrameQuality.POOR,
-                predictionDetail = "${prediction.label} (${(prediction.confidence * 100).toInt()}%)",
-                emotionStale = false,
-                canSubmitFeedback = true
-            )
-            viewModelScope.launch {
-                logEmotion(
-                    emotion = prediction.label,
-                    confidence = prediction.confidence,
-                    frameQuality = FrameQuality.POOR,
-                    smiling = prediction.smiling,
-                    leftEyeOpen = prediction.leftEyeOpen,
-                    rightEyeOpen = prediction.rightEyeOpen
-                )
-            }
-            return
-        }
-
+        val stableEmotion = emotionStabilizer.update(face.trackingId, prediction.label)
+        val stable = stableEmotion != null
+        lastStableEmotion = stableEmotion
+        lastStableConfidence = prediction.confidence
+        lastStableTrackingId = face.trackingId
         _state.value = _state.value.copy(
-            detectedEmotion = prediction.label,
+            detectedEmotion = stableEmotion ?: "Stabilizing...",
             frameQuality = if (lowConfidence) FrameQuality.POOR else FrameQuality.OK,
-            predictionDetail = if (lowConfidence) {
-                "Confidence ${(prediction.confidence * 100).toInt()}%"
-            } else "",
-            emotionStale = false,
-            canSubmitFeedback = true
+            predictionDetail = "Confidence ${(prediction.confidence * 100).toInt()}%",
+            emotionStale = !stable,
+            canSubmitFeedback = activeMode != SessionMode.PRACTICE || stable
         )
 
-        viewModelScope.launch {
-            logEmotion(
-                emotion = prediction.label,
-                confidence = prediction.confidence,
-                frameQuality = if (lowConfidence) FrameQuality.POOR else FrameQuality.OK,
-                smiling = prediction.smiling,
-                leftEyeOpen = prediction.leftEyeOpen,
-                rightEyeOpen = prediction.rightEyeOpen
-            )
-        }
-
-        if (!lowConfidence && activeMode == SessionMode.TEACHING) {
-            sendWebSocketCommand("EMOTION:${stripEmoji(prediction.label)}")
+        if (stable && activeMode == SessionMode.TEACHING) {
+            viewModelScope.launch {
+                logEmotion(
+                    emotion = stableEmotion ?: prediction.label,
+                    confidence = prediction.confidence,
+                    frameQuality = if (lowConfidence) FrameQuality.POOR else FrameQuality.OK,
+                    smiling = null,
+                    leftEyeOpen = null,
+                    rightEyeOpen = null,
+                    isStable = true,
+                    trackingId = face.trackingId
+                )
+            }
+            sendWebSocketCommand("EMOTION:${stripEmoji(stableEmotion ?: prediction.label)}")
         } else if (activeMode == SessionMode.PRACTICE) {
             sendWebSocketCommand("EMOTION:HIDDEN")
         }
     }
 
-    private fun predictEmotion(face: Face): EmotionPrediction {
-        val smiling = face.smilingProbability ?: 0f
-        val leftEyeOpen = face.leftEyeOpenProbability ?: 0f
-        val rightEyeOpen = face.rightEyeOpenProbability ?: 0f
-        val sleepyScore = 1f - max(leftEyeOpen, rightEyeOpen)
-        val happyScore = smiling
-        val sadScore = 1f - smiling
-        val neutralScore = 0.5f
+    private fun predictEmotion(bitmap: Bitmap, face: Face): EmotionPrediction? {
+        val classifier = emotionClassifier ?: return null
+        val boundingBox = expandRect(face.boundingBox, bitmap.width, bitmap.height)
+        val faceCrop = try {
+            Bitmap.createBitmap(
+                bitmap,
+                boundingBox.left,
+                boundingBox.top,
+                boundingBox.width(),
+                boundingBox.height()
+            )
+        } catch (e: Exception) {
+            return null
+        }
+        val probabilities = try {
+            classifier.classify(faceCrop)
+        } catch (e: Exception) {
+            Log.e("SessionViewModel", "Classifier error: ${e.message}", e)
+            return null
+        }
+        val maxIndex = probabilities.indices.maxByOrNull { probabilities[it] } ?: return null
+        val confidence = probabilities[maxIndex]
+        if (confidence < 0.6f) return null
+        val label = classifier.labels.getOrNull(maxIndex) ?: "Neutral"
+        return EmotionPrediction(label, confidence, null, null, null)
+    }
 
-        val scores = listOf(
-            EmotionPrediction("Happy 😊", happyScore, smiling, leftEyeOpen, rightEyeOpen),
-            EmotionPrediction("Sleepy 😴", sleepyScore, smiling, leftEyeOpen, rightEyeOpen),
-            EmotionPrediction("Sad 😢", sadScore, smiling, leftEyeOpen, rightEyeOpen),
-            EmotionPrediction("Neutral 😐", neutralScore, smiling, leftEyeOpen, rightEyeOpen)
-        )
-
-        return scores.maxByOrNull { it.confidence } ?: scores.last()
+    private fun expandRect(rect: Rect, width: Int, height: Int): Rect {
+        val expandX = (rect.width() * 0.2f).toInt()
+        val expandY = (rect.height() * 0.2f).toInt()
+        val left = (rect.left - expandX).coerceAtLeast(0)
+        val top = (rect.top - expandY).coerceAtLeast(0)
+        val right = (rect.right + expandX).coerceAtMost(width)
+        val bottom = (rect.bottom + expandY).coerceAtMost(height)
+        return Rect(left, top, right, bottom)
     }
 
     private suspend fun logEmotion(
@@ -594,7 +791,11 @@ class SessionViewModel(
         frameQuality: FrameQuality,
         smiling: Float?,
         leftEyeOpen: Float?,
-        rightEyeOpen: Float?
+        rightEyeOpen: Float?,
+        studentGuess: String? = null,
+        isCorrect: Boolean? = null,
+        isStable: Boolean = false,
+        trackingId: Int? = null
     ) {
         _state.value.currentSession?.let { session ->
             emotionLogRepository.insertEmotion(
@@ -603,6 +804,10 @@ class SessionViewModel(
                     emotion = emotion,
                     confidence = confidence,
                     frameQuality = frameQuality,
+                    studentGuess = studentGuess,
+                    isCorrect = isCorrect,
+                    isStable = isStable,
+                    trackingId = trackingId,
                     smilingProbability = smiling,
                     leftEyeOpenProbability = leftEyeOpen,
                     rightEyeOpenProbability = rightEyeOpen
@@ -617,7 +822,10 @@ class SessionViewModel(
             connectionLostTitle = title,
             connectionLostMessage = message,
             isProcessingPaused = true,
-            isReconnecting = false
+            isReconnecting = false,
+            isConnecting = false,
+            handshakeComplete = false,
+            connectionStatus = "Disconnected"
         )
     }
 
@@ -665,34 +873,30 @@ class SessionViewModel(
         }
     }
 
-    private suspend fun discoverEsp32Ip(): String? {
+    private suspend fun discoverEsp32Device(): DiscoveredDevice? {
         return withContext(Dispatchers.IO) {
             try {
-                DatagramSocket().use { socket ->
+                DatagramSocket(UDP_PORT).use { socket ->
                     socket.broadcast = true
                     socket.soTimeout = 3000
-                    val requestData = "DISCOVER_CUESIGHT".toByteArray()
-                    val packet = DatagramPacket(
-                        requestData,
-                        requestData.size,
-                        InetAddress.getByName("255.255.255.255"),
-                        UDP_PORT
-                    )
-                    socket.send(packet)
-                    val buffer = ByteArray(255)
+                    val buffer = ByteArray(256)
                     val responsePacket = DatagramPacket(buffer, buffer.size)
                     socket.receive(responsePacket)
                     val response = String(responsePacket.data, 0, responsePacket.length)
-                    if (response.startsWith("CUESIGHT_ESP32:")) {
-                        response.substringAfter(":")
-                    } else {
-                        null
-                    }
+                    parseDiscoveryMessage(response)
                 }
             } catch (e: Exception) {
                 null
             }
         }
+    }
+
+    private fun parseDiscoveryMessage(message: String): DiscoveredDevice? {
+        val parts = message.split("|", limit = 3)
+        if (parts.size < 3 || parts[0] != "CUESIGHT") return null
+        val ipAddress = parts[1]
+        val port = parts[2].toIntOrNull() ?: DEFAULT_WEBSOCKET_PORT
+        return DiscoveredDevice(ipAddress = ipAddress, webSocketPort = port)
     }
 
     private fun stripEmoji(label: String): String {
@@ -751,6 +955,9 @@ class SessionViewModel(
         emotionLogJob?.cancel()
         stopStreaming()
         faceDetector?.close()
+        emotionClassifier?.close()
+        discoveryJob?.cancel()
+        pingJob?.cancel()
     }
 }
 
