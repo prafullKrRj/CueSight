@@ -164,12 +164,12 @@ The ESP32-CAM and the Android phone must be on the **same local Wi-Fi network** 
 ```
 ESP32-CAM behavior:
 - On boot, ESP32 broadcasts a UDP packet every 2 seconds on port 4210
-- Packet payload (plain text): "CUESIGHT|<ESP32_IP>|<STREAM_PORT>|<CMD_PORT>"
-- Example: "CUESIGHT|192.168.4.1|81|82"
+ - Packet payload (plain text): "CUESIGHT|<ESP32_IP>|<WS_PORT>"
+ - Example: "CUESIGHT|192.168.4.1|8888"
 
 Android behavior:
 - App listens on UDP port 4210 for broadcast packets
-- Parses the payload to extract ESP32 IP, stream port, and command port
+ - Parses the payload to extract ESP32 IP and WebSocket port
 - Displays "Device Found: 192.168.4.1" on the connection screen
 - Teacher taps "Connect" to initiate the TCP/WebSocket handshake
 ```
@@ -179,14 +179,8 @@ Android behavior:
 **WebSocket-only update:** HTTP/MJPEG streaming is removed. The ESP32 sends **binary JPEG frames over WebSocket** on demand for ML processing. The Android app does not render a live video feed in the UI.
 
 ```
-ESP32-CAM:
-- Runs an HTTP server on port 81
-- Endpoint: GET /stream
-- Response: multipart/x-mixed-replace; boundary=frame
-- Each part: Content-Type: image/jpeg followed by raw JPEG bytes
-- Resolution: 320x240 (QVGA) for RAM efficiency — ESP32-CAM has ~520KB SRAM
-- Frame rate target: 10-12 FPS (sufficient for facial expression analysis)
-- JPEG quality: 12 (out of 63 scale, lower = better quality, ~15-20KB per frame)
+ESP32-CAM (legacy note):
+- HTTP/MJPEG server is not used in the WebSocket-only architecture.
 ```
 
 ### 2.3 Bidirectional Command Channel: WebSocket (Android ↔ ESP32)
@@ -195,7 +189,7 @@ ESP32-CAM:
 
 ```
 ESP32-CAM:
-- Runs a WebSocket server on port 82
+- Runs a WebSocket server on port 8888
 - Accepts one client connection (the Android app)
 
 Message format (JSON, kept small for ESP32 memory):
@@ -220,15 +214,12 @@ ESP32 → Android messages:
 ┌─────────────────┐         UDP Broadcast (4210)          ┌─────────────────┐
 │                 │ ◄──────────────────────────────────── │                 │
 │   Android App   │                                       │   ESP32-CAM     │
-│   (Teacher)     │         MJPEG Stream (HTTP :81)       │   (Glasses)     │
-│                 │ ◄──────────────────────────────────── │                 │
-│                 │                                       │                 │
-│                 │      WebSocket Bidirectional (:82)     │                 │
+│   (Teacher)     │   WebSocket Frames/Commands (:8888)   │   (Glasses)     │
 │                 │ ◄───────────────────────────────────► │                 │
 └─────────────────┘                                       └─────────────────┘
 
 Data direction:
-  ESP32 → Android:  Video frames (MJPEG), status acks
+  ESP32 → Android:  Binary JPEG frames (on demand), status acks
   Android → ESP32:  Mode commands, emotion labels (for glasses display), clear/ping
 ```
 
@@ -272,7 +263,7 @@ ML Kit FaceDetector configuration:
   - Face tracking: ENABLED (to track same face across frames)
 
 Pipeline per frame:
-  1. Receive JPEG frame from MJPEG stream
+  1. Receive JPEG frame from WebSocket
   2. Decode to Bitmap
   3. Pass to ML Kit FaceDetector → get List<Face> with bounding boxes
   4. For each Face:
@@ -561,7 +552,7 @@ UI Elements:
   │  ┌────────────────────────────┐  │
   │  │ 📡 CueSight-Glasses        │  │  ← Appears when UDP broadcast received
   │  │    IP: 192.168.4.1         │  │
-  │  │    Stream: :81  Cmd: :82   │  │
+  │  │    WebSocket: :8888        │  │
   │  │              [Connect]     │  │
   │  └────────────────────────────┘  │
   │                                  │
@@ -570,8 +561,8 @@ UI Elements:
   └──────────────────────────────────┘
 
 On "Connect" tap:
-  1. Attempt to open WebSocket connection to ws://<IP>:82
-  2. Connect WebSocket to receive binary JPEG frames when requested
+  1. Attempt to open WebSocket connection to ws://<IP>:8888
+  2. Receive binary JPEG frames over WebSocket when requested
   3. Show progress indicator: "Connecting..."
   4. On success:
      - Show green checkmark: "Connected ✓"
@@ -910,16 +901,12 @@ BOOT SEQUENCE:
      - Create SoftAP: SSID="CueSight-Glasses", Password="cuesight123"
      - IP: 192.168.4.1
   5. Start UDP broadcast task (Core 0):
-     - Every 2 seconds, broadcast "CUESIGHT|192.168.4.1|81|82" to 192.168.4.255:4210
-  6. Start WebSocket server on port 8888 (no HTTP server)
-     - Endpoint: GET /stream
-     - Response: multipart/x-mixed-replace
-     - Capture frame → send as JPEG part → repeat
-     - Target: 10-12 FPS
-  7. Start WebSocket server on port 82:
+     - Every 2 seconds, broadcast "CUESIGHT|192.168.4.1|8888" to 192.168.4.255:4210
+  6. Start WebSocket server on port 8888:
      - Accept 1 client max
+     - Send binary JPEG frames on demand
      - Handle incoming messages (see below)
-  8. Show "Ready" on OLED, then clear
+  7. Show "Ready" on OLED, then clear
 
 WEBSOCKET MESSAGE HANDLING:
   On receive text message:
@@ -973,20 +960,13 @@ MEMORY MANAGEMENT:
   - Free camera frame buffer immediately after sending via WebSocket
   - ArduinoJson: StaticJsonDocument on stack, never dynamic allocation
 
-STREAMING IMPLEMENTATION (port 81):
-  HTTP handler for /stream:
-    Set response header: "multipart/x-mixed-replace; boundary=frame"
-    Loop:
-      camera_fb_t *fb = esp_camera_fb_get()
-      if fb == NULL: continue
-      Send HTTP chunk:
-        "--frame\r\n"
-        "Content-Type: image/jpeg\r\n"
-        "Content-Length: " + fb->len + "\r\n\r\n"
-        [fb->buf, fb->len bytes]
-        "\r\n"
-      esp_camera_fb_return(fb)
-      delay(80)  // ~12 FPS throttle
+WEBSOCKET FRAME SENDING (port 8888):
+  Loop when streamingActive:
+    camera_fb_t *fb = esp_camera_fb_get()
+    if fb == NULL: continue
+    webSocket.sendBIN(client, fb->buf, fb->len)
+    esp_camera_fb_return(fb)
+    delay(80)  // ~12 FPS throttle
 
 DUAL-CORE TASK ASSIGNMENT:
   Core 0: UDP broadcast task (low priority, runs every 2s)
@@ -1009,12 +989,12 @@ Behavior:
   - In a coroutine loop:
     - Receive DatagramPacket (max 256 bytes)
     - Decode to String
-    - Parse: split by "|" → ["CUESIGHT", ip, streamPort, cmdPort]
+  - Parse: split by "|" → ["CUESIGHT", ip, wsPort]
     - Validate: first token must be "CUESIGHT"
     - Emit discovered device via SharedFlow/callback
   - Stop listening when connection established or screen left
 
-Data class: DiscoveredDevice(ip: String, streamPort: Int, cmdPort: Int)
+Data class: DiscoveredDevice(ip: String, wsPort: Int)
 ```
 
 ### 7.2 MJPEG Stream Client (Deprecated)
@@ -1046,7 +1026,7 @@ Class: WebSocketCommandClient
 
 Behavior:
   - Use OkHttp WebSocket client
-  - Connect to ws://<ip>:<cmdPort>
+  - Connect to ws://<ip>:<wsPort>
   - Implement WebSocketListener:
     - onOpen: emit ConnectionState.CONNECTED
     - onMessage: parse JSON response, emit via responseFlow
@@ -1126,7 +1106,7 @@ Class: EmotionStabilizer
   - update(trackingId, emotion): adds to buffer, returns majority if ≥ 3 agree, else null
   - Evict entries not updated for > 3 seconds (face left frame)
 
-Processing rate: Process every 3rd frame from MJPEG stream (at 12 FPS → ~4 inferences/sec)
+Processing rate: Process every 3rd WebSocket frame (at 12 FPS → ~4 inferences/sec)
   This balances responsiveness with CPU/battery usage.
 ```
 
@@ -1137,7 +1117,7 @@ Processing rate: Process every 3rd frame from MJPEG stream (at 12 FPS → ~4 inf
 ```
 States:
   IDLE → no active session
-  CONNECTING → UDP discovery + WebSocket/MJPEG setup
+  CONNECTING → UDP discovery + WebSocket setup
   TEACHING → Teaching Mode active
   PRACTICING → Practice Mode active
   GUESSING → Practice Mode, guess dialog open (video paused)
@@ -1220,7 +1200,7 @@ Back stack behavior:
 Network Errors:
   - UDP no response after 15 seconds → "No CueSight glasses found. Ensure they are powered on."
   - WebSocket connection refused → "Cannot connect. Check Wi-Fi network."
-  - MJPEG stream timeout (no frame for 5 seconds) → Show last frame with "⚠ Stream paused" overlay
+  - WebSocket frame timeout (no frame for 5 seconds) → Show last status with "⚠ Connection paused"
   - WebSocket disconnect mid-session → Auto-reconnect with banner notification
 
 ML Errors:

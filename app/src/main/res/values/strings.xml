@@ -2,4 +2,13 @@
     <string name="app_name">CueSight</string>
     <string name="progress_emotions_label">Emotions detected</string>
     <string name="accuracy_trend_label">Accuracy trend</string>
+    <string name="no_face_detected">No face detected</string>
+    <string name="stabilizing_label">Stabilizing...</string>
+    <string-array name="emotion_labels">
+        <item>Happy</item>
+        <item>Sad</item>
+        <item>Angry</item>
+        <item>Surprise</item>
+        <item>Neutral</item>
+    </string-array>
 </resources>

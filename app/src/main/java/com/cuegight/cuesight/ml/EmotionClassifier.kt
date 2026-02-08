@@ -12,7 +12,9 @@ class EmotionClassifier(context: Context) : Closeable {
     private val interpreter: Interpreter
     private val inputBuffer: ByteBuffer
 
-    val labels: List<String> = listOf("Happy", "Sad", "Angry", "Surprise", "Neutral")
+    val labels: List<String> = context.resources
+        .getStringArray(R.array.emotion_labels)
+        .toList()
 
     init {
         val modelBytes = context.resources.openRawResource(R.raw.mobilenetv3_fer).use { it.readBytes() }

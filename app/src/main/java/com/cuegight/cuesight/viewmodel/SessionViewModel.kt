@@ -53,8 +53,8 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import kotlin.math.max
 
-private const val UDP_PORT = 4210 // Must match ESP32_CueSight_Final.ino
-private const val DEFAULT_WEBSOCKET_PORT = 8888 // Must match ESP32_CueSight_Final.ino
+private const val UDP_PORT = 4210 // Must match repository root ESP32_CueSight_Final.ino
+private const val DEFAULT_WEBSOCKET_PORT = 8888 // Must match repository root ESP32_CueSight_Final.ino
 private const val FRAME_TIMEOUT_MS = 5_000L
 private const val FRAME_LOSS_WINDOW_MS = 10_000L
 private const val TARGET_FPS = 12f
@@ -636,7 +636,7 @@ class SessionViewModel(
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return
         val newFrameCount = _state.value.frameCount + 1
         _state.value = _state.value.copy(
-            currentFrame = null,
+            currentFrame = bitmap,
             frameCount = newFrameCount
         )
         if (newFrameCount % 3 == 0) {
@@ -688,7 +688,7 @@ class SessionViewModel(
     private fun handleFaces(bitmap: Bitmap, faces: List<Face>) {
         if (faces.isEmpty()) {
             _state.value = _state.value.copy(
-                detectedEmotion = "No face detected",
+                detectedEmotion = appContext.getString(R.string.no_face_detected),
                 frameQuality = FrameQuality.NO_FACE,
                 predictionDetail = "",
                 emotionStale = true,
@@ -722,7 +722,7 @@ class SessionViewModel(
         lastStableConfidence = prediction.confidence
         lastStableTrackingId = face.trackingId
         _state.value = _state.value.copy(
-            detectedEmotion = stableEmotion ?: "Stabilizing...",
+            detectedEmotion = stableEmotion ?: appContext.getString(R.string.stabilizing_label),
             frameQuality = if (lowConfidence) FrameQuality.POOR else FrameQuality.OK,
             predictionDetail = "Confidence ${(prediction.confidence * 100).toInt()}%",
             emotionStale = !stable,

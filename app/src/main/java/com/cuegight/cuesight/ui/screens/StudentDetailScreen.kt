@@ -583,6 +583,10 @@ private data class TrendResult(
     val predictedLabel: String
 )
 
+/**
+ * Calculates a linear regression trend line for accuracy points.
+ * Returns slope as percent change per session and a next-session accuracy forecast.
+ */
 private fun calculateTrend(points: List<AccuracyPoint>): TrendResult? {
     if (points.size < 2) return null
     val n = points.size

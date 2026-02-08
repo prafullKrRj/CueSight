@@ -11,7 +11,7 @@ import com.cuegight.cuesight.data.model.Student
 
 @Database(
     entities = [Student::class, Session::class, EmotionLog::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
