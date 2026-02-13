@@ -138,6 +138,14 @@ class SessionViewModel(
         activeMode = mode
         viewModelScope.launch {
             try {
+                if (studentId <= 0L) {
+                    emotionLogJob?.cancel()
+                    _state.value = _state.value.copy(
+                        currentSession = null,
+                        emotionLogs = emptyList()
+                    )
+                    return@launch
+                }
                 val sessionId = sessionRepository.insertSession(
                     Session(
                         studentId = studentId,
@@ -213,6 +221,11 @@ class SessionViewModel(
 
     fun endSession(status: SessionStatus = SessionStatus.COMPLETED, extraNote: String = "") {
         viewModelScope.launch {
+            if (_state.value.currentSession == null) {
+                stopStreaming()
+                _state.value = _state.value.copy(shouldNavigateBack = true)
+                return@launch
+            }
             _state.value.currentSession?.let { session ->
                 val duration = (System.currentTimeMillis() - session.startTime) / 1000
                 val emotionCount = emotionLogRepository.getEmotionCountForSession(session.id)
