@@ -200,9 +200,9 @@ void onWebSocketEvent(uint8_t client_num, WStype_t type, uint8_t* payload, size_
         } else if (message.startsWith("EMOTION:")) {
           String emotion = message.substring(8);
           emotion.trim();
-          if (emotion == "HIDDEN") {
-            currentEmotion = "Hidden";
-            showEmotionDisplay("Hidden");
+          if (emotion == "HIDDEN" || emotion == "?") {
+            currentEmotion = "?";
+            showEmotionDisplay("?");
           } else {
             currentEmotion = emotion;
             currentEmotion.replace("😊", "");
