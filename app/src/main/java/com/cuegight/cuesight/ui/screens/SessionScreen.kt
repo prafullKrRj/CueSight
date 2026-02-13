@@ -53,6 +53,12 @@ fun SessionScreen(
     } catch (e: Exception) {
         SessionMode.PRACTICE
     }
+    val isPracticeMode = sessionMode == SessionMode.PRACTICE
+    val modeTitle = when (sessionMode) {
+        SessionMode.TEACHING -> "Teaching Mode"
+        SessionMode.TEST -> "Test Mode"
+        SessionMode.PRACTICE -> "Practice Mode"
+    }
     
     LaunchedEffect(Unit) {
         viewModel.startSession(studentId, sessionMode)
@@ -193,9 +199,9 @@ fun SessionScreen(
             TopAppBar(
                 title = { 
                     Column {
-                        Text(if (sessionMode == SessionMode.TEACHING) "Teaching Mode" else "Practice Mode")
+                        Text(modeTitle)
                         Text(
-                            if (sessionMode == SessionMode.TEACHING) {
+                            if (!isPracticeMode) {
                                 "Frames: ${state.frameCount}"
                             } else {
                                 "Teacher-controlled practice"
@@ -210,7 +216,7 @@ fun SessionScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (sessionMode == SessionMode.TEACHING) 
+                    containerColor = if (!isPracticeMode)
                         MaterialTheme.colorScheme.primaryContainer 
                     else 
                         MaterialTheme.colorScheme.secondaryContainer
@@ -229,7 +235,7 @@ fun SessionScreen(
             item {
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = if (sessionMode == SessionMode.TEACHING)
+                        containerColor = if (!isPracticeMode)
                             MaterialTheme.colorScheme.primaryContainer
                         else
                             MaterialTheme.colorScheme.secondaryContainer
@@ -240,13 +246,13 @@ fun SessionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            if (sessionMode == SessionMode.TEACHING) Icons.Default.School else Icons.Default.Psychology,
+                            if (!isPracticeMode) Icons.Default.School else Icons.Default.Psychology,
                             contentDescription = null,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = if (sessionMode == SessionMode.TEACHING)
+                            text = if (!isPracticeMode)
                                 "Demonstrate emotions for the student to observe and learn"
                             else
                                 "Teacher demonstrates emotions while OLED shows '?' until feedback",
@@ -291,7 +297,7 @@ fun SessionScreen(
                         .height(400.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    if (sessionMode == SessionMode.TEACHING) {
+                    if (!isPracticeMode) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
@@ -393,7 +399,7 @@ fun SessionScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         val emotionColor = if (state.emotionStale ||
-                            (state.frameQuality == FrameQuality.POOR && sessionMode == SessionMode.TEACHING)
+                            (state.frameQuality == FrameQuality.POOR && !isPracticeMode)
                         ) {
                             MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f)
                         } else {
@@ -548,7 +554,7 @@ fun SessionScreen(
                 }
             }
 
-            if (state.isStreaming && sessionMode == SessionMode.PRACTICE) {
+            if (state.isStreaming && isPracticeMode) {
                 item {
                     Text(
                         "Practice Feedback",

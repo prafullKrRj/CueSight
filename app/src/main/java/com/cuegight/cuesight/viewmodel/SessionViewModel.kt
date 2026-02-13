@@ -183,7 +183,7 @@ class SessionViewModel(
             lastFrameReceivedAt = System.currentTimeMillis()
             val connected = connectWebSocket(
                 _state.value.ipAddress,
-                startStream = activeMode == SessionMode.TEACHING
+                startStream = activeMode != SessionMode.PRACTICE
             )
             if (!connected) {
                 handleConnectionLost(
@@ -352,7 +352,12 @@ class SessionViewModel(
         return object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 connectionResult.complete(true)
-                sendWebSocketCommand("MODE:${activeMode.name}")
+                // TEST uses teaching behavior on-device, so send TEACHING to keep ESP32 command handling compatible.
+                val modeCommand = when (activeMode) {
+                    SessionMode.PRACTICE -> SessionMode.PRACTICE.name
+                    else -> SessionMode.TEACHING.name
+                }
+                sendWebSocketCommand("MODE:$modeCommand")
                 if (activeMode == SessionMode.PRACTICE) {
                     sendWebSocketCommand("EMOTION:$PRACTICE_OLED_PLACEHOLDER")
                 }
@@ -513,7 +518,7 @@ class SessionViewModel(
         val lowConfidence = prediction.confidence < 0.6f
         lastPredictionLabel = prediction.label
 
-        if (lowConfidence && activeMode == SessionMode.TEACHING) {
+        if (lowConfidence && activeMode != SessionMode.PRACTICE) {
             _state.value = _state.value.copy(
                 detectedEmotion = "Uncertain",
                 frameQuality = FrameQuality.POOR,
@@ -555,7 +560,7 @@ class SessionViewModel(
             )
         }
 
-        if (!lowConfidence && activeMode == SessionMode.TEACHING) {
+        if (!lowConfidence && activeMode != SessionMode.PRACTICE) {
             sendWebSocketCommand("EMOTION:${stripEmoji(prediction.label)}")
         } else if (activeMode == SessionMode.PRACTICE) {
             sendWebSocketCommand("EMOTION:$PRACTICE_OLED_PLACEHOLDER")
