@@ -1,17 +1,17 @@
 /*
  * ============================================================================
- * CueSight ESP32-CAM - Optimized RAW GRAYSCALE Streaming
+ * CueSight ESP32-CAM - Optimized JPEG Streaming via OV2640
  * ============================================================================
  * 
  * Features:
- * - RAW GRAYSCALE 160x120 @ 15-20 FPS (optimized for speed)
- * - WebSocket RAW streaming (frame-only, no MJPEG)
+ * - JPEG 320x240 @ 15-20 FPS via OV2640 HW encoder (optimized for speed)
+ * - WebSocket binary streaming (JPEG frames)
  * - OLED display for status
  * - LED control with emotion feedback
  * - Session mode support (Teaching/Practice/Idle)
  * - Auto WiFi reconnection
  * 
- * Camera Config: Optimized GC2145 settings from user spec
+ * Camera Config: Optimized OV2640 settings (HW JPEG encoder)
  * ============================================================================
  */
 
@@ -27,7 +27,7 @@
 // ============================================================================
 // CAMERA MODEL
 // ============================================================================
-#define CAMERA_MODEL_GC2145
+#define CAMERA_MODEL_AI_THINKER
 #include "camera_pins.h"
 
 // ============================================================================
@@ -269,7 +269,7 @@ void handleDiscovery() {
 }
 
 // ============================================================================
-// CAMERA INITIALIZATION - RAW GRAYSCALE OPTIMIZED
+// CAMERA INITIALIZATION - JPEG OPTIMIZED for OV2640
 // ============================================================================
 bool initCamera() {
   camera_config_t config;
@@ -294,13 +294,13 @@ bool initCamera() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   
-  // ======== RAW GRAYSCALE OPTIMIZED (from user spec) ========
-  config.xclk_freq_hz = 20000000;              // 🔥 20MHz
-  config.pixel_format = PIXFORMAT_GRAYSCALE;   // 🔥 RAW GRAYSCALE (no conversion)
-  config.frame_size = FRAMESIZE_QQVGA;         // 🔥 160x120 (19,200 bytes per frame)
-  config.jpeg_quality = 10;                    // Not used in raw mode
-  config.fb_count = 2;                         // 🔥 Double buffer
-  config.grab_mode = CAMERA_GRAB_LATEST;       // 🔥 Skip old frames
+  // ======== JPEG OPTIMIZED for OV2640 HW encoder ========
+  config.xclk_freq_hz = 20000000;              // 20MHz XCLK
+  config.pixel_format = PIXFORMAT_JPEG;        // OV2640 HW JPEG (zero CPU cost)
+  config.frame_size = FRAMESIZE_QVGA;          // 320x240 (better for ML face detection)
+  config.jpeg_quality = 12;                    // Quality 12 (~10-15KB/frame)
+  config.fb_count = 2;                         // Double buffer
+  config.grab_mode = CAMERA_GRAB_LATEST;       // Skip old frames
   // =========================================
   
   if (psramFound()) {
@@ -321,10 +321,9 @@ bool initCamera() {
   }
   
   sensor_t *s = esp_camera_sensor_get();
-  s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
-  s->set_framesize(s, FRAMESIZE_QQVGA);
+  s->set_framesize(s, FRAMESIZE_QVGA);
   
-  // Optimize sensor for speed (from user spec)
+  // Optimize OV2640 sensor for speed
   s->set_brightness(s, 1);
   s->set_contrast(s, 0);
   s->set_exposure_ctrl(s, 1);
@@ -335,10 +334,10 @@ bool initCamera() {
   s->set_special_effect(s, 0);
   s->set_lenc(s, 1);
   
-  Serial.println("[CAM] Initialized: RAW GRAYSCALE at QQVGA (160x120)");
-  Serial.println("[CAM] Mode: ZERO conversion overhead!");
+  Serial.println("[CAM] Initialized: JPEG at QVGA (320x240) via OV2640 HW encoder");
+  Serial.println("[CAM] Mode: Hardware JPEG - zero CPU encoding overhead!");
   Serial.println("[CAM] Expected FPS: 15-20 (limited by WiFi bandwidth)");
-  Serial.println("[CAM] Frame size: ~19 KB (160x120 pixels)");
+  Serial.println("[CAM] Frame size: ~10-15 KB (JPEG compressed)");
   
   return true;
 }
@@ -397,7 +396,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
   Serial.println("🚀 CueSight ESP32-CAM");
-  Serial.println("   RAW GRAYSCALE Optimized");
+  Serial.println("   JPEG via OV2640 HW Encoder");
   Serial.println("========================================\n");
   
   // LED setup
@@ -462,7 +461,7 @@ void setup() {
   Serial.println("\n========================================");
   Serial.println("✅ System Ready");
   Serial.printf("🔌 WebSocket: ws://%s:%d\n", WiFi.localIP().toString().c_str(), WEBSOCKET_PORT);
-  Serial.println("📷 Camera: GRAYSCALE 160x120 @ 15-20 FPS");
+  Serial.println("📷 Camera: JPEG 320x240 via OV2640 HW encoder");
   Serial.println("========================================\n");
   
   Serial.printf("[MEM] Free heap: %u bytes\n", esp_get_free_heap_size());
@@ -525,7 +524,7 @@ void loop() {
       return;
     }
     
-    // 🔥 DIRECT SEND - NO CONVERSION! 
+    // Send JPEG frame directly - no conversion needed (OV2640 HW encoded)
     webSocket.sendBIN(connectedClient, fb->buf, fb->len);
     
     // Release frame buffer
