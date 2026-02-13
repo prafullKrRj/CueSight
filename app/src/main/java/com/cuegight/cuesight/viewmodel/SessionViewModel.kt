@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresPermission
@@ -51,8 +52,6 @@ import kotlin.math.max
 
 private const val UDP_PORT = 37020
 private const val WEBSOCKET_PORT = 8888
-private const val FRAME_WIDTH = 160
-private const val FRAME_HEIGHT = 120
 private const val FRAME_TIMEOUT_MS = 5_000L
 private const val FRAME_LOSS_WINDOW_MS = 10_000L
 private const val TARGET_FPS = 15f
@@ -106,8 +105,6 @@ class SessionViewModel(
     private var isDetecting = false
     private var pendingReconnect = false
     private var backgroundedAt: Long? = null
-    private var pixelBuffer: IntArray? = null
-    private var reusableBitmap: Bitmap? = null
     private var emotionLogJob: Job? = null
 
     private val _state = MutableStateFlow(SessionState())
@@ -420,7 +417,7 @@ class SessionViewModel(
     }
 
     private fun handleFrame(bytes: ByteArray) {
-        if (bytes.size != FRAME_WIDTH * FRAME_HEIGHT) {
+        if (bytes.isEmpty()) {
             return
         }
         updateFrameLossStats()
@@ -438,19 +435,7 @@ class SessionViewModel(
     }
 
     private fun decodeFrame(bytes: ByteArray): Bitmap? {
-        val buffer = pixelBuffer ?: IntArray(bytes.size).also { pixelBuffer = it }
-        for (i in bytes.indices) {
-            val v = bytes[i].toInt() and 0xFF
-            buffer[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-        }
-        val bitmap = reusableBitmap ?: Bitmap.createBitmap(
-            FRAME_WIDTH,
-            FRAME_HEIGHT,
-            Bitmap.Config.ARGB_8888
-        ).also { reusableBitmap = it }
-        bitmap.setPixels(buffer, 0, FRAME_WIDTH, 0, 0, FRAME_WIDTH, FRAME_HEIGHT)
-        return bitmap.config?.let {
-            bitmap.copy(it, false) }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
 
     private fun updateFrameLossStats() {

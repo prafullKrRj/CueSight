@@ -1,6 +1,6 @@
 /*
- * CueSight ESP32-CAM (Updated) - WebSocket RAW Streaming
- * Removes HTTP MJPEG streaming and sends raw grayscale frames over WebSocket.
+ * CueSight ESP32-CAM (Updated) - WebSocket JPEG Streaming via OV2640
+ * Sends JPEG frames over WebSocket using OV2640's hardware JPEG encoder.
  */
 
 #include "esp_camera.h"
@@ -11,7 +11,7 @@
 #include <WebSocketsServer.h>
 #include <WiFiUdp.h>
 
-#define CAMERA_MODEL_GC2145
+#define CAMERA_MODEL_AI_THINKER
 #include "camera_pins.h"
 
 // --- Pin Definitions ---
@@ -239,9 +239,9 @@ bool initCamera() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_GRAYSCALE;
-  config.frame_size = FRAMESIZE_QQVGA;
-  config.jpeg_quality = 10;
+  config.pixel_format = PIXFORMAT_JPEG;
+  config.frame_size = FRAMESIZE_QVGA;
+  config.jpeg_quality = 12;
   config.fb_count = 2;
   config.grab_mode = CAMERA_GRAB_LATEST;
 
@@ -261,8 +261,7 @@ bool initCamera() {
   }
 
   sensor_t *s = esp_camera_sensor_get();
-  s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
-  s->set_framesize(s, FRAMESIZE_QQVGA);
+  s->set_framesize(s, FRAMESIZE_QVGA);
   return true;
 }
 
