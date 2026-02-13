@@ -5,7 +5,7 @@ import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 
 enum class SessionMode {
-    TEACHING, PRACTICE
+    TEACHING, PRACTICE, TEST
 }
 
 enum class SessionStatus {

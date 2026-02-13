@@ -1,16 +1,63 @@
-package com.cuegight.cuesight.ui.screens
+package com.cuegight.cuesight.ui.screens.core
 
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.PauseCircle
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -31,9 +78,11 @@ import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionScreen(
+fun SessionCoreScreen(
     studentId: Long,
-    mode: String,
+    sessionMode: SessionMode,
+    modeTitle: String,
+    modeDescription: String,
     onNavigateBack: () -> Unit,
     viewModel: SessionViewModel = koinViewModel()
 ) {
@@ -43,17 +92,12 @@ fun SessionScreen(
     var showIpDialog by remember { mutableStateOf(true) }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val isPracticeMode = sessionMode == SessionMode.PRACTICE
 
     BackHandler(enabled = true) {
         showEndDialog = true
     }
-    
-    val sessionMode = try {
-        SessionMode.valueOf(mode)
-    } catch (e: Exception) {
-        SessionMode.PRACTICE
-    }
-    
+
     LaunchedEffect(Unit) {
         viewModel.startSession(studentId, sessionMode)
     }
@@ -92,7 +136,7 @@ fun SessionScreen(
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
-    
+
     if (showIpDialog) {
         AlertDialog(
             onDismissRequest = { },
@@ -120,7 +164,7 @@ fun SessionScreen(
             }
         )
     }
-    
+
     if (showEndDialog) {
         AlertDialog(
             onDismissRequest = { showEndDialog = false },
@@ -187,15 +231,15 @@ fun SessionScreen(
             }
         )
     }
-    
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Column {
-                        Text(if (sessionMode == SessionMode.TEACHING) "Teaching Mode" else "Practice Mode")
+                        Text(modeTitle)
                         Text(
-                            if (sessionMode == SessionMode.TEACHING) {
+                            if (!isPracticeMode) {
                                 "Frames: ${state.frameCount}"
                             } else {
                                 "Teacher-controlled practice"
@@ -210,9 +254,9 @@ fun SessionScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (sessionMode == SessionMode.TEACHING) 
-                        MaterialTheme.colorScheme.primaryContainer 
-                    else 
+                    containerColor = if (!isPracticeMode)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
                         MaterialTheme.colorScheme.secondaryContainer
                 )
             )
@@ -225,11 +269,10 @@ fun SessionScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Mode Description
             item {
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = if (sessionMode == SessionMode.TEACHING)
+                        containerColor = if (!isPracticeMode)
                             MaterialTheme.colorScheme.primaryContainer
                         else
                             MaterialTheme.colorScheme.secondaryContainer
@@ -240,16 +283,13 @@ fun SessionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            if (sessionMode == SessionMode.TEACHING) Icons.Default.School else Icons.Default.Psychology,
+                            if (!isPracticeMode) Icons.Default.School else Icons.Default.Psychology,
                             contentDescription = null,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = if (sessionMode == SessionMode.TEACHING)
-                                "Demonstrate emotions for the student to observe and learn"
-                            else
-                                "Teacher demonstrates emotions while OLED shows '?' until feedback",
+                            text = modeDescription,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -282,8 +322,7 @@ fun SessionScreen(
                     }
                 }
             }
-            
-            // Video Stream Section
+
             item {
                 Card(
                     modifier = Modifier
@@ -291,7 +330,7 @@ fun SessionScreen(
                         .height(400.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    if (sessionMode == SessionMode.TEACHING) {
+                    if (!isPracticeMode) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
@@ -377,8 +416,7 @@ fun SessionScreen(
                     }
                 }
             }
-            
-            // Emotion Display
+
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -393,7 +431,7 @@ fun SessionScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         val emotionColor = if (state.emotionStale ||
-                            (state.frameQuality == FrameQuality.POOR && sessionMode == SessionMode.TEACHING)
+                            (state.frameQuality == FrameQuality.POOR && !isPracticeMode)
                         ) {
                             MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f)
                         } else {
@@ -452,8 +490,7 @@ fun SessionScreen(
                     }
                 }
             }
-            
-            // Error Display
+
             if (state.error.isNotEmpty()) {
                 item {
                     Card(
@@ -480,8 +517,7 @@ fun SessionScreen(
                     }
                 }
             }
-            
-            // Control Buttons
+
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -496,7 +532,7 @@ fun SessionScreen(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Start")
                     }
-                    
+
                     Button(
                         onClick = { viewModel.stopStreaming() },
                         enabled = state.isStreaming,
@@ -511,8 +547,7 @@ fun SessionScreen(
                     }
                 }
             }
-            
-            // LED Control
+
             if (state.isStreaming) {
                 item {
                     Text(
@@ -521,7 +556,7 @@ fun SessionScreen(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
+
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -535,7 +570,7 @@ fun SessionScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("LED ON")
                         }
-                        
+
                         OutlinedButton(
                             onClick = { viewModel.sendLEDCommand("OFF") },
                             modifier = Modifier.weight(1f)
@@ -548,7 +583,7 @@ fun SessionScreen(
                 }
             }
 
-            if (state.isStreaming && sessionMode == SessionMode.PRACTICE) {
+            if (state.isStreaming && isPracticeMode) {
                 item {
                     Text(
                         "Practice Feedback",
@@ -596,8 +631,7 @@ fun SessionScreen(
                     }
                 }
             }
-            
-            // Recent Emotions
+
             if (state.emotionLogs.isNotEmpty()) {
                 item {
                     Text(
@@ -606,7 +640,7 @@ fun SessionScreen(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
+
                 items(state.emotionLogs.takeLast(10).reversed()) { log ->
                     Card(
                         modifier = Modifier.fillMaxWidth()

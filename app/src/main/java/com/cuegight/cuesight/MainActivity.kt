@@ -9,8 +9,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.navigation.Screen
-import com.cuegight.cuesight.ui.screens.*
+import com.cuegight.cuesight.ui.screens.AddStudentScreen
+import com.cuegight.cuesight.ui.screens.EntryScreen
+import com.cuegight.cuesight.ui.screens.SettingsScreen
+import com.cuegight.cuesight.ui.screens.StudentDetailScreen
+import com.cuegight.cuesight.ui.screens.StudentsScreen
+import com.cuegight.cuesight.ui.screens.developer.DeveloperTestScreen
+import com.cuegight.cuesight.ui.screens.practice.PracticeSessionScreen
+import com.cuegight.cuesight.ui.screens.teaching.TeachingSessionScreen
 import com.cuegight.cuesight.ui.theme.CueSightTheme
 
 class MainActivity : ComponentActivity() {
@@ -31,18 +39,15 @@ fun CueSightApp() {
     
     NavHost(
         navController = navController,
-        startDestination = Screen.Dashboard.route
+        startDestination = Screen.Entry.route
     ) {
-        composable(Screen.Dashboard.route) {
-            DashboardScreen(
-                onNavigateToStudents = {
+        composable(Screen.Entry.route) {
+            EntryScreen(
+                onNavigateToStudentEntry = {
                     navController.navigate(Screen.Students.route)
                 },
-                onNavigateToStudent = { studentId ->
-                    navController.navigate(Screen.StudentDetail.createRoute(studentId))
-                },
-                onNavigateToSettings = {
-                    navController.navigate(Screen.Settings.route)
+                onNavigateToDeveloperTest = {
+                    navController.navigate(Screen.DeveloperTest.route)
                 }
             )
         }
@@ -74,23 +79,40 @@ fun CueSightApp() {
                 studentId = studentId,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToSession = { id, mode ->
-                    navController.navigate(Screen.Session.createRoute(id, mode))
+                    val route = if (mode == SessionMode.TEACHING.name) {
+                        Screen.TeachingSession.createRoute(id)
+                    } else {
+                        Screen.PracticeSession.createRoute(id)
+                    }
+                    navController.navigate(route)
                 }
             )
         }
         
         composable(
-            route = Screen.Session.route,
-            arguments = listOf(
-                navArgument("studentId") { type = NavType.LongType },
-                navArgument("mode") { type = NavType.StringType }
-            )
+            route = Screen.TeachingSession.route,
+            arguments = listOf(navArgument("studentId") { type = NavType.LongType })
         ) { backStackEntry ->
             val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
-            val mode = backStackEntry.arguments?.getString("mode") ?: "PRACTICE"
-            SessionScreen(
+            TeachingSessionScreen(
                 studentId = studentId,
-                mode = mode,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.PracticeSession.route,
+            arguments = listOf(navArgument("studentId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
+            PracticeSessionScreen(
+                studentId = studentId,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.DeveloperTest.route) {
+            DeveloperTestScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
