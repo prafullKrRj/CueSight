@@ -193,7 +193,11 @@ fun SessionScreen(
                     Column {
                         Text(if (sessionMode == SessionMode.TEACHING) "Teaching Mode" else "Practice Mode")
                         Text(
-                            "Frames: ${state.frameCount}",
+                            if (sessionMode == SessionMode.TEACHING) {
+                                "Frames: ${state.frameCount}"
+                            } else {
+                                "Teacher-controlled practice"
+                            },
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -243,7 +247,7 @@ fun SessionScreen(
                             text = if (sessionMode == SessionMode.TEACHING)
                                 "Demonstrate emotions for the student to observe and learn"
                             else
-                                "Student practices expressing different emotions",
+                                "Teacher demonstrates emotions while OLED shows '?' until feedback",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -285,37 +289,58 @@ fun SessionScreen(
                         .height(400.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (state.currentFrame != null) {
-                            Image(
-                                bitmap = state.currentFrame!!.asImageBitmap(),
-                                contentDescription = "Camera Stream",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Fit
-                            )
-                        } else {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                if (state.isStreaming) {
-                                    CircularProgressIndicator()
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text("Loading stream...")
-                                } else {
-                                    Icon(
-                                        Icons.Default.Videocam,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(64.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text("Press Start to begin streaming")
+                    if (sessionMode == SessionMode.TEACHING) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (state.currentFrame != null) {
+                                Image(
+                                    bitmap = state.currentFrame!!.asImageBitmap(),
+                                    contentDescription = "Camera Stream",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    if (state.isStreaming) {
+                                        CircularProgressIndicator()
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("Loading stream...")
+                                    } else {
+                                        Icon(
+                                            Icons.Default.Videocam,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(64.dp),
+                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                        )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("Press Start to begin streaming")
+                                    }
                                 }
                             }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                "?",
+                                style = MaterialTheme.typography.displayLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Practice mode runs without camera stream")
+                            Text(
+                                "Use feedback buttons for student response",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }

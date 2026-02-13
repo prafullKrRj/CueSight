@@ -170,19 +170,29 @@ class SessionViewModel(
                 isReconnecting = false,
                 shouldNavigateToReport = false,
                 frameQuality = FrameQuality.OK,
-                predictionDetail = "",
+                detectedEmotion = if (activeMode == SessionMode.PRACTICE) "?" else "No emotion detected",
+                predictionDetail = if (activeMode == SessionMode.PRACTICE) {
+                    "Teacher demonstrates. Student guesses."
+                } else {
+                    ""
+                },
                 emotionStale = false,
                 canSubmitFeedback = true
             )
             lastFrameReceivedAt = System.currentTimeMillis()
-            val connected = connectWebSocket(_state.value.ipAddress, startStream = true)
+            val connected = connectWebSocket(
+                _state.value.ipAddress,
+                startStream = activeMode == SessionMode.TEACHING
+            )
             if (!connected) {
                 handleConnectionLost(
                     title = "Connection Lost",
                     message = "Unable to connect to ESP32. Session data is safe."
                 )
             } else {
-                startFrameWatchdog()
+                if (activeMode == SessionMode.TEACHING) {
+                    startFrameWatchdog()
+                }
             }
         }
     }
@@ -347,14 +357,14 @@ class SessionViewModel(
                 connectionResult.complete(true)
                 sendWebSocketCommand("MODE:${activeMode.name}")
                 if (activeMode == SessionMode.PRACTICE) {
-                    sendWebSocketCommand("EMOTION:HIDDEN")
+                    sendWebSocketCommand("EMOTION:?")
                 }
                 if (startStream) {
                     sendWebSocketCommand("STREAM:START")
+                    startFrameWatchdog()
                 }
                 pendingReconnect = false
                 lastFrameReceivedAt = System.currentTimeMillis()
-                startFrameWatchdog()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -550,7 +560,7 @@ class SessionViewModel(
         if (!lowConfidence && activeMode == SessionMode.TEACHING) {
             sendWebSocketCommand("EMOTION:${stripEmoji(prediction.label)}")
         } else if (activeMode == SessionMode.PRACTICE) {
-            sendWebSocketCommand("EMOTION:HIDDEN")
+            sendWebSocketCommand("EMOTION:?")
         }
     }
 
