@@ -2,6 +2,7 @@ package com.cuegight.cuesight.feature.practice.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -79,7 +80,13 @@ fun WeightAdjustmentDialog(
     onDismiss: () -> Unit,
     onSave: (Map<String, Float>) -> Unit
 ) {
-    val edited = remember(currentWeights) { mutableStateMapOf<String, String>().apply { currentWeights.forEach { (k, v) -> put(k, v.toString()) } } }
+    val edited = remember(currentWeights) {
+        mutableStateMapOf<String, String>().apply {
+            currentWeights.forEach { (emotion, weight) ->
+                put(emotion, weight.toString())
+            }
+        }
+    }
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -118,18 +125,19 @@ fun MasteryBars(perEmotionScores: Map<String, Float>) {
                     Text("${(score * 100).toInt()}%")
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Spacer(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
                         .background(Color.LightGray, RoundedCornerShape(8.dp))
-                )
-                Spacer(
-                    modifier = Modifier
-                        .fillMaxWidth(score.coerceIn(0f, 1f))
-                        .height(8.dp)
-                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
-                )
+                ) {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth(score.coerceIn(0f, 1f))
+                            .height(8.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
+                    )
+                }
             }
         }
     }
