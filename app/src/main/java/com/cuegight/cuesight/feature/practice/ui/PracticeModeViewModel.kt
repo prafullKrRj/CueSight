@@ -279,7 +279,12 @@ class PracticeModeViewModel(
         }
 
         weights.forEach { (emotion, weight) ->
-            repository.updateWeight(TherapistWeight(emotion = emotion, weight = weight))
+            val existing = repository.getWeight(emotion)
+            if (existing == null) {
+                repository.insertWeight(TherapistWeight(emotion = emotion, weight = weight))
+            } else {
+                repository.updateWeight(existing.copy(weight = weight))
+            }
         }
         return true
     }
