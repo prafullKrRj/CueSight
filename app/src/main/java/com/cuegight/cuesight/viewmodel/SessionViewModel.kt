@@ -45,12 +45,9 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
 import kotlin.math.max
 
-private const val UDP_PORT = 37020
+private const val DEFAULT_ESP32_IP = "192.168.4.1"
 private const val WEBSOCKET_PORT = 8888
 private const val FRAME_TIMEOUT_MS = 5_000L
 private const val FRAME_LOSS_WINDOW_MS = 10_000L
@@ -71,9 +68,10 @@ data class SessionState(
     val frameCount: Int = 0,
     val isStreaming: Boolean = false,
     val isProcessingPaused: Boolean = false,
+    val isConnected: Boolean = false,
     val error: String = "",
     val warning: String = "",
-    val ipAddress: String = "",
+    val ipAddress: String = DEFAULT_ESP32_IP,
     val frameQuality: FrameQuality = FrameQuality.OK,
     val predictionDetail: String = "",
     val emotionStale: Boolean = false,
@@ -134,16 +132,41 @@ class SessionViewModel(
         _state.value = _state.value.copy(ipAddress = ip)
     }
 
+    fun manualConnect() {
+        viewModelScope.launch {
+            Log.d("SessionViewModel", "🔧 MANUAL CONNECT TRIGGERED")
+            Log.d("SessionViewModel", "IP: ${_state.value.ipAddress}")
+            val result = connectWebSocket(_state.value.ipAddress, startStream = false)
+            Log.d("SessionViewModel", "Manual connect result: $result")
+            if (result) {
+                _state.value = _state.value.copy(toastMessage = "Connected to ESP32!")
+            } else {
+                _state.value = _state.value.copy(toastMessage = "Failed to connect to ESP32")
+            }
+        }
+    }
+
     fun startSession(studentId: Long, mode: SessionMode) {
         activeMode = mode
         viewModelScope.launch {
             try {
+                Log.d("SessionViewModel", "=== START SESSION ===")
+                Log.d("SessionViewModel", "StudentId: $studentId, Mode: $mode")
+                Log.d("SessionViewModel", "IP Address: ${_state.value.ipAddress}")
+
+                // Auto-connect to ESP32 to show connection status - MUST happen before early return!
+                delay(500) // Small delay to let UI settle
+                Log.d("SessionViewModel", "Attempting WebSocket connection to ${_state.value.ipAddress}:$WEBSOCKET_PORT")
+                val connected = connectWebSocket(_state.value.ipAddress, startStream = false)
+                Log.d("SessionViewModel", "Connection result: $connected")
+
                 if (studentId <= 0L) {
                     emotionLogJob?.cancel()
                     _state.value = _state.value.copy(
                         currentSession = null,
                         emotionLogs = emptyList()
                     )
+                    Log.d("SessionViewModel", "Test mode - no session saved (studentId = 0)")
                     return@launch
                 }
                 val sessionId = sessionRepository.insertSession(
@@ -189,15 +212,25 @@ class SessionViewModel(
                 canSubmitFeedback = true
             )
             lastFrameReceivedAt = System.currentTimeMillis()
-            val connected = connectWebSocket(
-                _state.value.ipAddress,
-                startStream = activeMode != SessionMode.PRACTICE
-            )
-            if (!connected) {
-                handleConnectionLost(
-                    title = "Connection Lost",
-                    message = "Unable to connect to ESP32. Session data is safe."
+
+            // If already connected, just send STREAM:START command
+            // Otherwise, establish connection first
+            if (webSocket != null && _state.value.isConnected) {
+                if (activeMode != SessionMode.PRACTICE) {
+                    sendWebSocketCommand("STREAM:START")
+                    startFrameWatchdog()
+                }
+            } else {
+                val connected = connectWebSocket(
+                    _state.value.ipAddress,
+                    startStream = activeMode != SessionMode.PRACTICE
                 )
+                if (!connected) {
+                    handleConnectionLost(
+                        title = "Connection Lost",
+                        message = "Unable to connect to ESP32. Session data is safe."
+                    )
+                }
             }
         }
     }
@@ -211,6 +244,7 @@ class SessionViewModel(
         webSocket = null
         _state.value = _state.value.copy(
             isStreaming = false,
+            isConnected = false,
             currentFrame = null,
             warning = "",
             connectionLost = false,
@@ -271,16 +305,13 @@ class SessionViewModel(
             _state.value = _state.value.copy(isReconnecting = true)
             pendingReconnect = true
             val success = withTimeoutOrNull(RECONNECT_TIMEOUT_MS) {
-                val discoveredIp = discoverEsp32Ip()
-                if (discoveredIp == null) {
-                    _state.value = _state.value.copy(
-                        connectionLostTitle = "Device Reset Detected",
-                        connectionLostMessage = "ESP32 is not responding to discovery. It may have restarted or be unreachable."
-                    )
+                val targetIp = if (_state.value.ipAddress.isBlank()) {
+                    DEFAULT_ESP32_IP
+                } else {
+                    _state.value.ipAddress
                 }
-                val targetIp = discoveredIp ?: _state.value.ipAddress
-                if (discoveredIp != null) {
-                    _state.value = _state.value.copy(ipAddress = discoveredIp)
+                if (_state.value.ipAddress.isBlank()) {
+                    _state.value = _state.value.copy(ipAddress = DEFAULT_ESP32_IP)
                 }
                 repeat(CONNECTION_RETRY_LIMIT) { attempt ->
                     if (connectWebSocket(targetIp, startStream = true)) {
@@ -341,20 +372,49 @@ class SessionViewModel(
 
     private suspend fun connectWebSocket(ipAddress: String, startStream: Boolean): Boolean {
         return withContext(Dispatchers.IO) {
-            val connectionResult = CompletableDeferred<Boolean>()
-            val request = Request.Builder()
-                .url("ws://$ipAddress:$WEBSOCKET_PORT")
-                .build()
+            try {
+                Log.d("SessionViewModel", "connectWebSocket() called - IP: $ipAddress, startStream: $startStream")
 
-            webSocket?.close(1000, "Reconnecting")
-            webSocket = client.newWebSocket(
-                request,
-                createWebSocketListener(connectionResult, startStream)
-            )
+                // Check if we can reach ESP32 (ping check)
+                try {
+                    val reachable = InetAddress.getByName(ipAddress).isReachable(3000)
+                    if (!reachable) {
+                        Log.e("SessionViewModel", "❌ ESP32 IP $ipAddress is NOT REACHABLE!")
+                        Log.e("SessionViewModel", "Make sure Android is connected to ESP32 WiFi (SSID: ESP32)")
+                        _state.value = _state.value.copy(
+                            error = "Cannot reach ESP32. Connect to ESP32 WiFi first!"
+                        )
+                        return@withContext false
+                    }
+                    Log.d("SessionViewModel", "✅ ESP32 IP is reachable")
+                } catch (e: Exception) {
+                    Log.e("SessionViewModel", "Network check failed: ${e.message}")
+                }
 
-            withTimeoutOrNull(10_000L) {
-                connectionResult.await()
-            } ?: false
+                val connectionResult = CompletableDeferred<Boolean>()
+                val wsUrl = "ws://$ipAddress:$WEBSOCKET_PORT"
+                Log.d("SessionViewModel", "Building WebSocket request: $wsUrl")
+                val request = Request.Builder()
+                    .url(wsUrl)
+                    .build()
+
+                webSocket?.close(1000, "Reconnecting")
+                Log.d("SessionViewModel", "Creating new WebSocket connection...")
+                webSocket = client.newWebSocket(
+                    request,
+                    createWebSocketListener(connectionResult, startStream)
+                )
+
+                val result = withTimeoutOrNull(10_000L) {
+                    connectionResult.await()
+                } ?: false
+
+                Log.d("SessionViewModel", "Connection completed: $result")
+                result
+            } catch (e: Exception) {
+                Log.e("SessionViewModel", "WebSocket connection error: ${e.message}", e)
+                false
+            }
         }
     }
 
@@ -364,17 +424,22 @@ class SessionViewModel(
     ): WebSocketListener {
         return object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.d("SessionViewModel", "✅ WebSocket OPENED successfully!")
                 connectionResult.complete(true)
+                _state.value = _state.value.copy(isConnected = true)
+                Log.d("SessionViewModel", "State updated: isConnected = true")
                 // TEST uses teaching behavior on-device, so send TEACHING to keep ESP32 command handling compatible.
                 val modeCommand = when (activeMode) {
                     SessionMode.PRACTICE -> SessionMode.PRACTICE.name
                     else -> SessionMode.TEACHING.name
                 }
+                Log.d("SessionViewModel", "Sending MODE command: $modeCommand")
                 sendWebSocketCommand("MODE:$modeCommand")
                 if (activeMode == SessionMode.PRACTICE) {
                     sendWebSocketCommand("EMOTION:$PRACTICE_OLED_PLACEHOLDER")
                 }
                 if (startStream) {
+                    Log.d("SessionViewModel", "Sending STREAM:START command")
                     sendWebSocketCommand("STREAM:START")
                     // Watchdog tracks frame timeout, so it is only needed when frame streaming is active.
                     startFrameWatchdog()
@@ -384,6 +449,7 @@ class SessionViewModel(
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                Log.d("SessionViewModel", "Received text message: $text")
                 if (text.startsWith("ERROR:LOW_MEMORY")) {
                     stopStreaming()
                     _state.value = _state.value.copy(
@@ -398,6 +464,9 @@ class SessionViewModel(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e("SessionViewModel", "❌ WebSocket FAILURE: ${t.message}", t)
+                Log.e("SessionViewModel", "Response: $response")
+                _state.value = _state.value.copy(isConnected = false)
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
                 }
@@ -410,6 +479,8 @@ class SessionViewModel(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d("SessionViewModel", "WebSocket CLOSED - Code: $code, Reason: $reason")
+                _state.value = _state.value.copy(isConnected = false)
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
                 }
@@ -673,36 +744,6 @@ class SessionViewModel(
         val socket = webSocket ?: return
         if (!socket.send(command)) {
             Log.w("SessionViewModel", "Failed to send: $command")
-        }
-    }
-
-    private suspend fun discoverEsp32Ip(): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                DatagramSocket().use { socket ->
-                    socket.broadcast = true
-                    socket.soTimeout = 3000
-                    val requestData = "DISCOVER_CUESIGHT".toByteArray()
-                    val packet = DatagramPacket(
-                        requestData,
-                        requestData.size,
-                        InetAddress.getByName("255.255.255.255"),
-                        UDP_PORT
-                    )
-                    socket.send(packet)
-                    val buffer = ByteArray(255)
-                    val responsePacket = DatagramPacket(buffer, buffer.size)
-                    socket.receive(responsePacket)
-                    val response = String(responsePacket.data, 0, responsePacket.length)
-                    if (response.startsWith("CUESIGHT_ESP32:")) {
-                        response.substringAfter(":")
-                    } else {
-                        null
-                    }
-                }
-            } catch (e: Exception) {
-                null
-            }
         }
     }
 

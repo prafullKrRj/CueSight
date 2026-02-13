@@ -3,6 +3,8 @@ package com.cuegight.cuesight.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,12 +14,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.viewmodel.StudentViewModel
-import com.patrykandpatrick.vico.compose.axis.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.axis.rememberStartAxis
-import com.patrykandpatrick.vico.compose.chart.Chart
-import com.patrykandpatrick.vico.compose.m3.lineChart
-import com.patrykandpatrick.vico.core.entry.FloatEntry
-import com.patrykandpatrick.vico.core.entry.entryModelOf
 import org.koin.androidx.compose.koinViewModel
 import java.util.Locale
 
@@ -34,11 +30,7 @@ fun StudentDetailScreen(
     val student by viewModel.getStudentById(studentId).collectAsState(initial = null)
     val sessions by viewModel.getSessionsByStudent(studentId).collectAsState(initial = emptyList())
     val orderedSessions = remember(sessions) { sessions.sortedBy { it.startTime } }
-    val sessionEntries = remember(orderedSessions) {
-        orderedSessions.mapIndexed { index, session ->
-            FloatEntry(index.toFloat(), session.totalEmotionsDetected.toFloat())
-        }
-    }
+
     val totalDurationSeconds = remember(orderedSessions) {
         orderedSessions.sumOf { it.durationSeconds }
     }
@@ -60,7 +52,7 @@ fun StudentDetailScreen(
                 title = { Text(student?.name ?: "Student Details") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 }
             )
@@ -171,7 +163,7 @@ fun StudentDetailScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    Icons.Default.ShowChart,
+                                    Icons.AutoMirrored.Filled.ShowChart,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -191,14 +183,13 @@ fun StudentDetailScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                 )
                             } else {
-                                Chart(
-                                    chart = lineChart(),
-                                    model = entryModelOf(sessionEntries),
-                                    startAxis = rememberStartAxis(),
-                                    bottomAxis = rememberBottomAxis(),
+                                Text(
+                                    text = "Chart visualization temporarily disabled",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(180.dp)
+                                        .padding(vertical = 40.dp)
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 FlowRow(

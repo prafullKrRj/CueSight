@@ -44,7 +44,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,8 +87,6 @@ fun SessionCoreScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
-    var ipAddress by remember { mutableStateOf(state.ipAddress) }
-    var showIpDialog by remember { mutableStateOf(true) }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val isPracticeMode = sessionMode == SessionMode.PRACTICE
@@ -126,7 +123,13 @@ fun SessionCoreScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> viewModel.onAppBackgrounded(context)
+                Lifecycle.Event.ON_PAUSE -> {
+                    try {
+                        viewModel.onAppBackgrounded(context)
+                    } catch (_: SecurityException) {
+                        // Permission not granted, skip background notification
+                    }
+                }
                 Lifecycle.Event.ON_RESUME -> viewModel.onAppForegrounded(context)
                 else -> Unit
             }
@@ -137,33 +140,6 @@ fun SessionCoreScreen(
         }
     }
 
-    if (showIpDialog) {
-        AlertDialog(
-            onDismissRequest = { },
-            title = { Text("ESP32-CAM IP Address") },
-            text = {
-                Column {
-                    Text("Enter the IP address of your ESP32-CAM device:")
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = ipAddress,
-                        onValueChange = { ipAddress = it },
-                        label = { Text("IP Address") },
-                        placeholder = { Text("e.g., 192.168.1.100") },
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.setIpAddress(ipAddress)
-                    showIpDialog = false
-                }) {
-                    Text("Connect")
-                }
-            }
-        )
-    }
 
     if (showEndDialog) {
         AlertDialog(
@@ -269,6 +245,96 @@ fun SessionCoreScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Connection Status
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (state.isConnected)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (state.isConnected) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                contentDescription = null,
+                                tint = if (state.isConnected)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (state.isConnected) "Connected" else "Not Connected",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (state.isConnected)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = "ESP32: ${state.ipAddress}:8888",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (state.isConnected)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                if (!state.isConnected && state.error.contains("Cannot reach", ignoreCase = true)) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "⚠️ Check WiFi: Must connect to 'ESP32' network",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
+                        if (state.isReconnecting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Manual Connect Button for Testing
+            item {
+                Button(
+                    onClick = { viewModel.manualConnect() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (state.isConnected)
+                            MaterialTheme.colorScheme.secondary
+                        else
+                            MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(
+                        if (state.isConnected) Icons.Default.CheckCircle else Icons.Default.PlayArrow,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (state.isConnected) "Reconnect to ESP32" else "Connect to ESP32")
+                }
+            }
+
             item {
                 Card(
                     colors = CardDefaults.cardColors(
@@ -525,7 +591,8 @@ fun SessionCoreScreen(
                 ) {
                     Button(
                         onClick = { viewModel.startStreaming() },
-                        enabled = !state.isStreaming && !state.connectionLost && !state.isReconnecting,
+                        enabled = !state.isStreaming && !state.connectionLost && !state.isReconnecting &&
+                                  (isPracticeMode || state.isConnected),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
@@ -564,6 +631,7 @@ fun SessionCoreScreen(
                     ) {
                         OutlinedButton(
                             onClick = { viewModel.sendLEDCommand("ON") },
+                            enabled = state.isConnected,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.LightMode, contentDescription = null)
@@ -573,6 +641,7 @@ fun SessionCoreScreen(
 
                         OutlinedButton(
                             onClick = { viewModel.sendLEDCommand("OFF") },
+                            enabled = state.isConnected,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.LightMode, contentDescription = null)
@@ -599,7 +668,7 @@ fun SessionCoreScreen(
                     ) {
                         OutlinedButton(
                             onClick = { viewModel.sendFeedback("CORRECT") },
-                            enabled = state.canSubmitFeedback,
+                            enabled = state.canSubmitFeedback && state.isConnected,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.CheckCircle, contentDescription = null)
@@ -609,7 +678,7 @@ fun SessionCoreScreen(
 
                         OutlinedButton(
                             onClick = { viewModel.sendFeedback("WRONG") },
-                            enabled = state.canSubmitFeedback,
+                            enabled = state.canSubmitFeedback && state.isConnected,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.Cancel, contentDescription = null)
@@ -622,7 +691,7 @@ fun SessionCoreScreen(
                 item {
                     OutlinedButton(
                         onClick = { viewModel.sendShowAnswer() },
-                        enabled = state.canSubmitFeedback,
+                        enabled = state.canSubmitFeedback && state.isConnected,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Visibility, contentDescription = null)
