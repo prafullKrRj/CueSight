@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -332,7 +334,10 @@ fun SessionScreen(
                             Text(
                                 "?",
                                 style = MaterialTheme.typography.displayLarge,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Practice mode placeholder question mark"
+                                }
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("Practice mode runs without camera stream")

@@ -61,6 +61,7 @@ private const val RECONNECT_TIMEOUT_MS = 30_000L
 private const val CONNECTION_RETRY_LIMIT = 3
 private const val NOTIFICATION_CHANNEL_ID = "session_progress"
 private const val NOTIFICATION_ID = 1001
+private const val PRACTICE_OLED_PLACEHOLDER = "?"
 
 data class SessionState(
     val currentSession: Session? = null,
@@ -170,7 +171,7 @@ class SessionViewModel(
                 isReconnecting = false,
                 shouldNavigateToReport = false,
                 frameQuality = FrameQuality.OK,
-                detectedEmotion = if (activeMode == SessionMode.PRACTICE) "?" else "No emotion detected",
+                detectedEmotion = if (activeMode == SessionMode.PRACTICE) PRACTICE_OLED_PLACEHOLDER else "No emotion detected",
                 predictionDetail = if (activeMode == SessionMode.PRACTICE) {
                     "Teacher demonstrates. Student guesses."
                 } else {
@@ -189,10 +190,6 @@ class SessionViewModel(
                     title = "Connection Lost",
                     message = "Unable to connect to ESP32. Session data is safe."
                 )
-            } else {
-                if (activeMode == SessionMode.TEACHING) {
-                    startFrameWatchdog()
-                }
             }
         }
     }
@@ -357,10 +354,11 @@ class SessionViewModel(
                 connectionResult.complete(true)
                 sendWebSocketCommand("MODE:${activeMode.name}")
                 if (activeMode == SessionMode.PRACTICE) {
-                    sendWebSocketCommand("EMOTION:?")
+                    sendWebSocketCommand("EMOTION:$PRACTICE_OLED_PLACEHOLDER")
                 }
                 if (startStream) {
                     sendWebSocketCommand("STREAM:START")
+                    // Watchdog tracks frame timeout, so it is only needed when frame streaming is active.
                     startFrameWatchdog()
                 }
                 pendingReconnect = false
@@ -560,7 +558,7 @@ class SessionViewModel(
         if (!lowConfidence && activeMode == SessionMode.TEACHING) {
             sendWebSocketCommand("EMOTION:${stripEmoji(prediction.label)}")
         } else if (activeMode == SessionMode.PRACTICE) {
-            sendWebSocketCommand("EMOTION:?")
+            sendWebSocketCommand("EMOTION:$PRACTICE_OLED_PLACEHOLDER")
         }
     }
 
