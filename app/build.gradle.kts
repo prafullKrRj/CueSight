@@ -82,8 +82,6 @@ dependencies {
     // extended icons
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.nanohttpd)
-    implementation(libs.java.websocket)
-    implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.google.mlkit:face-detection:16.1.7")
     
     // Room Database

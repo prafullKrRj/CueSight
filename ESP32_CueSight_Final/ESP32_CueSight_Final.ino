@@ -5,7 +5,7 @@
  *
  * Features:
  * - JPEG 320x240 @ 15-20 FPS via OV2640 HW encoder (optimized for speed)
- * - WebSocket binary streaming (JPEG frames)
+ * - Raw TCP binary streaming (JPEG frames with 4-byte length prefix)
  * - OLED display for status
  * - LED control with emotion feedback
  * - Session mode support (Teaching/Practice/Idle)
@@ -22,7 +22,6 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <WebSocketsServer.h>
 
 // ============================================================================
 // CAMERA MODEL
@@ -65,16 +64,18 @@
 // ============================================================================
 // NETWORK CONFIGURATION
 // ============================================================================
-const char* ssid = "ESP32";           // TODO: Change this
+const char* ssid = "ESP32-CAM";       // ESP32 AP SSID
 const char* password = "12345678";   // TODO: Change this
 
-#define WEBSOCKET_PORT 8888
+#define TCP_PORT 81
+#define MAX_COMMAND_LENGTH 128
 
 // ============================================================================
 // GLOBALS
 // ============================================================================
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-WebSocketsServer webSocket(WEBSOCKET_PORT);
+WiFiServer tcpServer(TCP_PORT);
+WiFiClient connectedClient;
 
 // State variables
 enum SessionMode {
@@ -87,7 +88,6 @@ String currentEmotion = "Waiting...";
 SessionMode currentMode = MODE_IDLE;
 bool streamingActive = false;
 bool lowMemoryLock = false;
-uint8_t connectedClient = 255;
 
 // Performance metrics
 uint32_t frameCount = 0;
@@ -96,11 +96,11 @@ float currentFPS = 0.0;
 
 // Network monitoring
 uint32_t lastReconnectAttempt = 0;
-uint32_t lastPingTime = 0;
 bool wifiWasDisconnected = false;
 
 // Display buffer
 char displayBuffer[64];
+String commandBuffer = "";
 
 // ============================================================================
 // FAST OLED UPDATE
@@ -164,100 +164,69 @@ void showFeedbackDisplay(const String& feedbackText) {
 }
 
 // ============================================================================
-// WEBSOCKET EVENT HANDLER
+// TCP COMMAND HANDLER
 // ============================================================================
-void onWebSocketEvent(uint8_t client_num, WStype_t type, uint8_t* payload, size_t length) {
-  switch (type) {
-    case WStype_DISCONNECTED:
-      Serial.printf("[WS] Client #%u disconnected\n", client_num);
-      if (connectedClient == client_num) {
-        streamingActive = false;
-        connectedClient = 255;
-      }
-      break;
+void handleCommand(String message) {
+  message.trim();
+  if (message.length() == 0) {
+    return;
+  }
 
-    case WStype_CONNECTED:
-      {
-        IPAddress ip = webSocket.remoteIP(client_num);
-        Serial.printf("[WS] Client #%u connected from %s\n", client_num, ip.toString().c_str());
-        connectedClient = client_num;
-      }
-      break;
+  Serial.printf("[TCP] Received command: %s\n", message.c_str());
 
-    case WStype_TEXT:
-      {
-        String message = String((const char*)payload, length);
-        message.trim();
-        Serial.printf("[WS] Received text: %s\n", message.c_str());
-
-        if (message.startsWith("MODE:")) {
-          String mode = message.substring(5);
-          mode.toUpperCase();
-          if (mode == "TEACHING") {
-            currentMode = MODE_TEACHING;
-            fastOLEDUpdate("Mode", "Teaching", 1);
-          } else if (mode == "PRACTICE") {
-            currentMode = MODE_PRACTICE;
-            fastOLEDUpdate("Mode", "Practice", 1);
-          } else {
-            currentMode = MODE_IDLE;
-            streamingActive = false;
-            fastOLEDUpdate("Mode", "Idle", 1);
-          }
-        } else if (message == "STREAM:START") {
-          if (!lowMemoryLock) {
-            streamingActive = true;
-            Serial.println("[WS] Streaming started");
-          }
-        } else if (message == "STREAM:STOP") {
-          streamingActive = false;
-          Serial.println("[WS] Streaming stopped");
-        } else if (message.startsWith("EMOTION:")) {
-          String emotion = message.substring(8);
-          emotion.trim();
-          if (emotion == "HIDDEN" || emotion == "?") {
-            currentEmotion = "?";
-            showEmotionDisplay("?");
-          } else {
-            currentEmotion = emotion;
-            currentEmotion.replace("😊", "");
-            currentEmotion.replace("😢", "");
-            currentEmotion.replace("😴", "");
-            currentEmotion.replace("😐", "");
-            currentEmotion.trim();
-            showEmotionDisplay(currentEmotion);
-          }
-        } else if (message.startsWith("FEEDBACK:")) {
-          String feedback = message.substring(9);
-          feedback.trim();
-          showFeedbackDisplay(feedback);
-        } else if (message.startsWith("LED:")) {
-          String command = message.substring(4);
-          command.toUpperCase();
-          if (command == "ON") {
-            digitalWrite(LED_PIN, HIGH);
-          } else if (command == "OFF") {
-            digitalWrite(LED_PIN, LOW);
-          } else if (command == "BLINK") {
-            digitalWrite(LED_PIN, HIGH);
-            delay(150);
-            digitalWrite(LED_PIN, LOW);
-          }
-        }
-      }
-      break;
-
-    case WStype_BIN:
-      // Not used for receiving
-      break;
-
-    case WStype_PING:
-      // Handled automatically
-      break;
-
-    case WStype_PONG:
-      Serial.println("[WS] Pong received");
-      break;
+  if (message.startsWith("MODE:")) {
+    String mode = message.substring(5);
+    mode.toUpperCase();
+    if (mode == "TEACHING") {
+      currentMode = MODE_TEACHING;
+      fastOLEDUpdate("Mode", "Teaching", 1);
+    } else if (mode == "PRACTICE") {
+      currentMode = MODE_PRACTICE;
+      fastOLEDUpdate("Mode", "Practice", 1);
+    } else {
+      currentMode = MODE_IDLE;
+      streamingActive = false;
+      fastOLEDUpdate("Mode", "Idle", 1);
+    }
+  } else if (message == "STREAM:START") {
+    if (!lowMemoryLock) {
+      streamingActive = true;
+      Serial.println("[TCP] Streaming started");
+    }
+  } else if (message == "STREAM:STOP") {
+    streamingActive = false;
+    Serial.println("[TCP] Streaming stopped");
+  } else if (message.startsWith("EMOTION:")) {
+    String emotion = message.substring(8);
+    emotion.trim();
+    if (emotion == "HIDDEN" || emotion == "?") {
+      currentEmotion = "?";
+      showEmotionDisplay("?");
+    } else {
+      currentEmotion = emotion;
+      currentEmotion.replace("😊", "");
+      currentEmotion.replace("😢", "");
+      currentEmotion.replace("😴", "");
+      currentEmotion.replace("😐", "");
+      currentEmotion.trim();
+      showEmotionDisplay(currentEmotion);
+    }
+  } else if (message.startsWith("FEEDBACK:")) {
+    String feedback = message.substring(9);
+    feedback.trim();
+    showFeedbackDisplay(feedback);
+  } else if (message.startsWith("LED:")) {
+    String command = message.substring(4);
+    command.toUpperCase();
+    if (command == "ON") {
+      digitalWrite(LED_PIN, HIGH);
+    } else if (command == "OFF") {
+      digitalWrite(LED_PIN, LOW);
+    } else if (command == "BLINK") {
+      digitalWrite(LED_PIN, HIGH);
+      delay(150);
+      digitalWrite(LED_PIN, LOW);
+    }
   }
 }
 
@@ -430,19 +399,18 @@ void setup() {
   }
 
 
-  // WebSocket server
-  webSocket.begin();
-  webSocket.onEvent(onWebSocketEvent);
-  Serial.printf("[WS] Server started on port %d\n", WEBSOCKET_PORT);
+  // TCP server
+  tcpServer.begin();
+  tcpServer.setNoDelay(true);
+  Serial.printf("[TCP] Server started on port %d\n", TCP_PORT);
 
   // Init timing
   lastFPSCheck = millis();
   lastReconnectAttempt = millis();
-  lastPingTime = millis();
 
   Serial.println("\n========================================");
   Serial.println("✅ System Ready");
-  Serial.printf("🔌 WebSocket: ws://%s:%d\n", WiFi.softAPIP().toString().c_str(), WEBSOCKET_PORT);
+  Serial.printf("🔌 TCP: %s:%d\n", WiFi.softAPIP().toString().c_str(), TCP_PORT);
   Serial.println("📷 Camera: JPEG 320x240 via OV2640 HW encoder");
   Serial.println("========================================\n");
 
@@ -472,19 +440,43 @@ void loop() {
     fastOLEDUpdate("WiFi OK", "Waiting...", 1);
   }
 
-  // Handle WebSocket events
-  webSocket.loop();
-
-
-  // WebSocket ping
-  unsigned long now = millis();
-  if (connectedClient != 255 && (now - lastPingTime > 30000)) {
-    webSocket.sendPing(connectedClient);
-    lastPingTime = now;
+  // Accept or replace active TCP client
+  WiFiClient incomingClient = tcpServer.available();
+  if (incomingClient) {
+    if (connectedClient && connectedClient.connected()) {
+      connectedClient.stop();
+    }
+    commandBuffer = "";
+    streamingActive = false;
+    connectedClient = incomingClient;
+    connectedClient.setNoDelay(true);
+    Serial.printf("[TCP] Client connected from %s\n", connectedClient.remoteIP().toString().c_str());
   }
 
-  // WebSocket RAW streaming (if active)
-  if (streamingActive && connectedClient != 255) {
+  if (connectedClient && !connectedClient.connected()) {
+    Serial.println("[TCP] Client disconnected");
+    connectedClient.stop();
+    commandBuffer = "";
+    streamingActive = false;
+  }
+
+  // Process line-delimited commands from Android
+  while (connectedClient && connectedClient.connected() && connectedClient.available()) {
+    char c = (char)connectedClient.read();
+    if (c == '\n') {
+      handleCommand(commandBuffer);
+      commandBuffer = "";
+    } else if (c != '\r') {
+      commandBuffer += c;
+      if (commandBuffer.length() > MAX_COMMAND_LENGTH) {
+        Serial.println("[TCP] Command too long, dropping buffer");
+        commandBuffer = "";
+      }
+    }
+  }
+
+  // TCP RAW streaming (if active)
+  if (streamingActive && connectedClient && connectedClient.connected()) {
     camera_fb_t* fb = esp_camera_fb_get();
 
     if (!fb) {
@@ -493,8 +485,23 @@ void loop() {
       return;
     }
 
-    // Send JPEG frame directly - no conversion needed (OV2640 HW encoded)
-    webSocket.sendBIN(connectedClient, fb->buf, fb->len);
+    // Send [4-byte big-endian length][JPEG bytes]
+    uint32_t frameLen = fb->len;
+    uint8_t header[4] = {
+      (uint8_t)((frameLen >> 24) & 0xFF),
+      (uint8_t)((frameLen >> 16) & 0xFF),
+      (uint8_t)((frameLen >> 8) & 0xFF),
+      (uint8_t)(frameLen & 0xFF)
+    };
+    size_t headerWritten = connectedClient.write(header, sizeof(header));
+    size_t frameWritten = connectedClient.write(fb->buf, fb->len);
+    if (headerWritten != sizeof(header) || frameWritten != (size_t)fb->len) {
+      Serial.println("[TCP] Write failed, disconnecting client");
+      connectedClient.stop();
+      streamingActive = false;
+      esp_camera_fb_return(fb);
+      return;
+    }
 
     // Release frame buffer
     esp_camera_fb_return(fb);
@@ -504,7 +511,7 @@ void loop() {
     if (frameCount % 50 == 0) {
       unsigned long elapsed = millis() - lastFPSCheck;
       currentFPS = (50.0 * 1000.0) / elapsed;
-      Serial.printf("[WS] FPS: %.1f | Frames: %lu | Heap: %u\n",
+      Serial.printf("[TCP] FPS: %.1f | Frames: %lu | Heap: %u\n",
                     currentFPS, frameCount, esp_get_free_heap_size());
       lastFPSCheck = millis();
     }
@@ -516,8 +523,8 @@ void loop() {
         lowMemoryLock = true;
         streamingActive = false;
         Serial.printf("⚠️ LOW MEMORY: %u bytes\n", freeHeap);
-        if (connectedClient != 255) {
-          webSocket.sendTXT(connectedClient, "ERROR:LOW_MEMORY");
+        if (connectedClient && connectedClient.connected()) {
+          connectedClient.stop();
         }
         fastOLEDUpdate("Low Memory", "Restart ESP32", 1);
       }

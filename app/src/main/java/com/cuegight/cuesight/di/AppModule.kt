@@ -4,7 +4,7 @@ import com.cuegight.cuesight.data.database.CueSightDatabase
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.data.repository.StudentRepository
-import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.service.TcpFrameService
 import com.cuegight.cuesight.viewmodel.DashboardViewModel
 import com.cuegight.cuesight.viewmodel.PracticeViewModel
 import com.cuegight.cuesight.viewmodel.SessionViewModel
@@ -25,12 +25,12 @@ val appModule = module {
     single { EmotionLogRepository(get()) }
     
     // Services
-    single { WebSocketService() }
+    single { TcpFrameService() }
 
     // ViewModels
     viewModel { DashboardViewModel(get(), get(), get()) }
     viewModel { StudentViewModel(get(), get()) }
-    viewModel { SessionViewModel(get(), get()) }
+    viewModel { SessionViewModel(get(), get(), get()) }
     viewModel { TeachingViewModel(get(), get(), get()) }
     viewModel { PracticeViewModel(get(), get(), get()) }
     viewModel { TestViewModel(get()) }

@@ -11,7 +11,7 @@ import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
-import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.service.TcpFrameService
 import com.cuegight.cuesight.util.NetworkBindingHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,7 +36,7 @@ data class PracticeState(
 class PracticeViewModel(
     private val sessionRepository: SessionRepository,
     private val emotionLogRepository: EmotionLogRepository,
-    private val webSocketService: WebSocketService
+    private val webSocketService: TcpFrameService
 ) : ViewModel() {
 
     private var streamJob: Job? = null

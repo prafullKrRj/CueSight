@@ -8,7 +8,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.data.model.FrameQuality
-import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.service.TcpFrameService
 import com.cuegight.cuesight.util.NetworkBindingHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -39,7 +39,7 @@ data class TestState(
 )
 
 class TestViewModel(
-    private val webSocketService: WebSocketService
+    private val webSocketService: TcpFrameService
 ) : ViewModel() {
 
     private var faceDetector: FaceDetector? = null

@@ -14,7 +14,7 @@ import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
-import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.service.TcpFrameService
 import com.cuegight.cuesight.util.NetworkBindingHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -77,7 +77,7 @@ data class TeachingState(
 class TeachingViewModel(
     private val sessionRepository: SessionRepository,
     private val emotionLogRepository: EmotionLogRepository,
-    private val webSocketService: WebSocketService
+    private val webSocketService: TcpFrameService
 ) : ViewModel() {
 
     companion object {
