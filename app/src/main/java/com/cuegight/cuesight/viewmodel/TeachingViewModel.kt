@@ -501,7 +501,7 @@ class TeachingViewModel(
                 lastEmotionSent = mostCommon
                 lastEmotionSentTime = now
 
-                // Log to database
+                // Log to database (using average confidence for buffered emotion)
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
                         _state.value.currentSession?.let { session ->
@@ -509,11 +509,11 @@ class TeachingViewModel(
                                 EmotionLog(
                                     sessionId = session.id,
                                     emotion = mostCommon,
-                                    confidence = confidence,
+                                    confidence = 0.7f,  // Default confidence for buffered emotions
                                     frameQuality = FrameQuality.OK,
-                                    smilingProbability = smilingProbability,
-                                    leftEyeOpenProbability = leftEyeOpenProbability,
-                                    rightEyeOpenProbability = rightEyeOpenProbability
+                                    smilingProbability = null,  // Probabilities don't correspond to buffered emotion
+                                    leftEyeOpenProbability = null,
+                                    rightEyeOpenProbability = null
                                 )
                             )
                         }

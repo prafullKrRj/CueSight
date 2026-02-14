@@ -57,6 +57,8 @@ const char* password = "12345678";
 #define FRAME_PORT 81
 #define COMMAND_PORT 82
 #define MAX_COMMAND_LENGTH 128
+#define MAX_COMMANDS_PER_LOOP 3
+#define SOCKET_TIMEOUT_SEC 3
 
 // ============================================================================
 // >>>  FPS THROTTLE — THIS WAS MISSING  <<<
@@ -285,7 +287,7 @@ bool initCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_QVGA;    // 320x240
-  config.jpeg_quality = 35;              // <<< Quality 35 = moderate compression, ~2-4KB frames. Higher=better quality but larger, Lower=worse quality but smaller
+  config.jpeg_quality = 35;              // <<< Quality 35 = moderate compression. Higher values = better quality + larger files, Lower values = worse quality + smaller files
   config.fb_count = 2;
   config.grab_mode = CAMERA_GRAB_LATEST;
 
@@ -442,7 +444,7 @@ void loop() {
     }
     frameClient = incomingFrameClient;
     frameClient.setNoDelay(true);
-    frameClient.setTimeout(3);  // 3 second write timeout
+    frameClient.setTimeout(SOCKET_TIMEOUT_SEC);
     Serial.printf("[TCP] Frame client connected from %s\n",
                   frameClient.remoteIP().toString().c_str());
   }
@@ -462,7 +464,7 @@ void loop() {
     commandBuffer = "";
     commandClient = incomingCmdClient;
     commandClient.setNoDelay(true);
-    commandClient.setTimeout(3);  // 3 second read timeout
+    commandClient.setTimeout(SOCKET_TIMEOUT_SEC);
     Serial.printf("[TCP] Command client connected from %s\n",
                   commandClient.remoteIP().toString().c_str());
   }
@@ -474,9 +476,9 @@ void loop() {
   }
 
   // ===== PROCESS LINE-DELIMITED COMMANDS (port 82) =====
-  // Limit to 3 commands per loop iteration to prevent command flood
+  // Limit to MAX_COMMANDS_PER_LOOP commands per loop iteration to prevent command flood
   int commandsProcessed = 0;
-  while (commandClient && commandClient.connected() && commandClient.available() && commandsProcessed < 3) {
+  while (commandClient && commandClient.connected() && commandClient.available() && commandsProcessed < MAX_COMMANDS_PER_LOOP) {
     char c = (char)commandClient.read();
     if (c == '\n') {
       handleCommand(commandBuffer);

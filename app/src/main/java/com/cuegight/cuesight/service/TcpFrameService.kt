@@ -229,7 +229,7 @@ class TcpFrameService {
             // Open command socket (port 82, write-only)
             val newCommandSocket = socketFactory?.createSocket() ?: Socket()
             newCommandSocket.tcpNoDelay = true
-            newCommandSocket.soTimeout = READ_TIMEOUT_MS
+            // No read timeout needed for write-only socket
             newCommandSocket.setSendBufferSize(4096)
             newCommandSocket.connect(InetSocketAddress(ipAddress, COMMAND_PORT), CONNECT_TIMEOUT_MS)
             commandSocket = newCommandSocket
