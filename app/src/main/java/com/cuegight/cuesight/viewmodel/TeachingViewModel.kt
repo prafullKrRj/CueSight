@@ -471,16 +471,31 @@ class TeachingViewModel(
         }
     }
 
+    /**
+     * Classifies emotion using ML Kit face probabilities (heuristic approach).
+     * Thresholds are based on empirical observation of typical facial expressions.
+     * Future enhancement: Replace with TensorFlow Lite emotion model for improved accuracy.
+     */
     private fun classifyEmotion(
         smiling: Float,
         leftEye: Float,
         rightEye: Float
     ): Pair<String, Float> {
+        // Emotion classification thresholds
+        val HAPPY_SMILE_THRESHOLD = 0.7f      // High smile probability indicates happiness
+        val SAD_SMILE_THRESHOLD = 0.3f        // Low smile + drooping eye indicates sadness
+        val SAD_EYE_THRESHOLD = 0.5f
+        val ANGRY_SMILE_THRESHOLD = 0.2f      // Very low smile + wide eyes indicates anger
+        val ANGRY_EYE_THRESHOLD = 0.7f
+        val SURPRISED_EYE_THRESHOLD = 0.8f    // Very wide eyes + moderate smile indicates surprise
+        val SURPRISED_SMILE_MIN = 0.3f
+        val SURPRISED_SMILE_MAX = 0.6f
+
         return when {
-            smiling > 0.7f -> "Happy" to smiling
-            smiling < 0.3f && leftEye < 0.5f -> "Sad" to (1f - smiling)
-            smiling < 0.2f && leftEye > 0.7f && rightEye > 0.7f -> "Angry" to (1f - smiling)
-            leftEye > 0.8f && rightEye > 0.8f && smiling in 0.3f..0.6f -> "Surprised" to leftEye
+            smiling > HAPPY_SMILE_THRESHOLD -> "Happy" to smiling
+            smiling < SAD_SMILE_THRESHOLD && leftEye < SAD_EYE_THRESHOLD -> "Sad" to (1f - smiling)
+            smiling < ANGRY_SMILE_THRESHOLD && leftEye > ANGRY_EYE_THRESHOLD && rightEye > ANGRY_EYE_THRESHOLD -> "Angry" to (1f - smiling)
+            leftEye > SURPRISED_EYE_THRESHOLD && rightEye > SURPRISED_EYE_THRESHOLD && smiling in SURPRISED_SMILE_MIN..SURPRISED_SMILE_MAX -> "Surprised" to leftEye
             else -> "Neutral" to 0.5f
         }
     }

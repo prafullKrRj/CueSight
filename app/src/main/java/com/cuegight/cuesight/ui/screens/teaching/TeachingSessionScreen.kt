@@ -105,7 +105,7 @@ fun TeachingSessionScreen(
                     Column {
                         Text("Teaching Session", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            formatSessionTime(state.sessionElapsedSeconds),
+                            formatTime(state.sessionElapsedSeconds),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -474,7 +474,7 @@ fun LiveStatsRow(
             modifier = Modifier.weight(1f),
             icon = Icons.Default.Timer,
             label = "Active",
-            value = formatActiveTime(activeSeconds)
+            value = formatTime(activeSeconds)
         )
         StatCard(
             modifier = Modifier.weight(1f),
@@ -781,7 +781,7 @@ fun EndSessionDialog(
         onDismissRequest = onDismiss,
         title = { Text("End Teaching Session?") },
         text = {
-            Text("Session duration: ${formatSessionTime(durationSeconds)}. $emotionCount emotions detected. This session will be saved.")
+            Text("Session duration: ${formatTime(durationSeconds)}. $emotionCount emotions detected. This session will be saved.")
         },
         confirmButton = {
             Button(onClick = onConfirm) {
@@ -870,13 +870,7 @@ fun HardwareErrorDialog(
 }
 
 // Helper functions
-private fun formatSessionTime(seconds: Long): String {
-    val minutes = seconds / 60
-    val secs = seconds % 60
-    return "%d:%02d".format(minutes, secs)
-}
-
-private fun formatActiveTime(seconds: Long): String {
+private fun formatTime(seconds: Long): String {
     val minutes = seconds / 60
     val secs = seconds % 60
     return "%d:%02d".format(minutes, secs)
