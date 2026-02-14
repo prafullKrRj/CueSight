@@ -165,20 +165,23 @@ void handleCommand(String message) {
   message.trim();
   if (message.length() == 0) return;
 
-  Serial.printf("[TCP] Received command: %s\n", message.c_str());
+  Serial.printf("[TCP] 📥 Received command: %s\n", message.c_str());
 
   if (message.startsWith("MODE:")) {
     String mode = message.substring(5);
     mode.toUpperCase();
     if (mode == "TEACHING") {
       currentMode = MODE_TEACHING;
+      Serial.println("[MODE] ✅ Switched to TEACHING mode");
       fastOLEDUpdate("Mode", "Teaching", 1);
     } else if (mode == "PRACTICE") {
       currentMode = MODE_PRACTICE;
+      Serial.println("[MODE] ✅ Switched to PRACTICE mode");
       fastOLEDUpdate("Mode", "Practice", 1);
     } else {
       currentMode = MODE_IDLE;
       streamingActive = false;
+      Serial.println("[MODE] ✅ Switched to IDLE mode");
       fastOLEDUpdate("Mode", "Idle", 1);
     }
   } else if (message == "STREAM:START") {
@@ -187,11 +190,13 @@ void handleCommand(String message) {
       frameCount = 0;
       lastFPSCheck = millis();
       lastFrameTime = millis() + 300;  // 300ms warmup before first frame
-      Serial.println("[TCP] Streaming started (300ms warmup)");
+      Serial.println("[TCP] ✅ Streaming started (300ms warmup)");
+    } else {
+      Serial.println("[TCP] ❌ Cannot start streaming - LOW MEMORY LOCK");
     }
   } else if (message == "STREAM:STOP") {
     streamingActive = false;
-    Serial.println("[TCP] Streaming stopped");
+    Serial.println("[TCP] ⏹️ Streaming stopped");
   } else if (message.startsWith("EMOTION:")) {
     String emotion = message.substring(8);
     emotion.trim();
@@ -440,17 +445,18 @@ void loop() {
   WiFiClient incomingFrameClient = frameServer.available();
   if (incomingFrameClient) {
     if (frameClient && frameClient.connected()) {
+      Serial.println("[TCP] ⚠️ Replacing existing frame client");
       frameClient.stop();
     }
     frameClient = incomingFrameClient;
     frameClient.setNoDelay(true);
     frameClient.setTimeout(SOCKET_TIMEOUT_SEC);
-    Serial.printf("[TCP] Frame client connected from %s\n",
+    Serial.printf("[TCP] ✅ Frame client connected from %s\n",
                   frameClient.remoteIP().toString().c_str());
   }
 
   if (frameClient && !frameClient.connected()) {
-    Serial.println("[TCP] Frame client disconnected");
+    Serial.println("[TCP] ❌ Frame client disconnected");
     frameClient.stop();
     streamingActive = false;
   }
@@ -459,18 +465,19 @@ void loop() {
   WiFiClient incomingCmdClient = commandServer.available();
   if (incomingCmdClient) {
     if (commandClient && commandClient.connected()) {
+      Serial.println("[TCP] ⚠️ Replacing existing command client");
       commandClient.stop();
     }
     commandBuffer = "";
     commandClient = incomingCmdClient;
     commandClient.setNoDelay(true);
     commandClient.setTimeout(SOCKET_TIMEOUT_SEC);
-    Serial.printf("[TCP] Command client connected from %s\n",
+    Serial.printf("[TCP] ✅ Command client connected from %s\n",
                   commandClient.remoteIP().toString().c_str());
   }
 
   if (commandClient && !commandClient.connected()) {
-    Serial.println("[TCP] Command client disconnected");
+    Serial.println("[TCP] ❌ Command client disconnected");
     commandClient.stop();
     commandBuffer = "";
   }
@@ -514,7 +521,7 @@ void loop() {
 
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) {
-      Serial.println("[CAM] Capture failed");
+      Serial.println("[CAM] ❌ Capture failed");
       delay(50);
       return;
     }
@@ -537,7 +544,7 @@ void loop() {
     esp_camera_fb_return(fb);
 
     if (!ok) {
-      Serial.println("[TCP] Write failed, disconnecting frame client");
+      Serial.println("[TCP] ❌ Write failed, disconnecting frame client");
       frameClient.stop();
       streamingActive = false;
       return;
@@ -548,7 +555,7 @@ void loop() {
     if (frameCount % 50 == 0) {
       unsigned long elapsed = millis() - lastFPSCheck;
       currentFPS = (50.0 * 1000.0) / elapsed;
-      Serial.printf("[TCP] FPS: %.1f | Frames: %lu | Heap: %u\n",
+      Serial.printf("[TCP] 📺 FPS: %.1f | Frames: %lu | Heap: %u\n",
                     currentFPS, frameCount, esp_get_free_heap_size());
       lastFPSCheck = millis();
     }
@@ -559,7 +566,7 @@ void loop() {
       if (freeHeap < 30000 && !lowMemoryLock) {
         lowMemoryLock = true;
         streamingActive = false;
-        Serial.printf("LOW MEMORY: %u bytes\n", freeHeap);
+        Serial.printf("❌ LOW MEMORY: %u bytes\n", freeHeap);
         if (frameClient && frameClient.connected()) {
           frameClient.stop();
         }
