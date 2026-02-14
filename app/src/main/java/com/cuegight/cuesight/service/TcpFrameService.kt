@@ -297,18 +297,18 @@ class TcpFrameService {
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
         
-        if (frameSocket != null) {
+        frameSocket?.let { socket ->
             try {
-                frameSocket!!.close()
+                socket.close()
                 Log.d(TAG, "✅ Frame socket closed")
             } catch (e: Exception) {
                 Log.w(TAG, "⚠️ Frame socket close failed: ${e.message}")
             }
         }
         
-        if (commandSocket != null) {
+        commandSocket?.let { socket ->
             try {
-                commandSocket!!.close()
+                socket.close()
                 Log.d(TAG, "✅ Command socket closed")
             } catch (e: Exception) {
                 Log.w(TAG, "⚠️ Command socket close failed: ${e.message}")
