@@ -262,11 +262,11 @@ class TcpFrameService {
             input = DataInputStream(BufferedInputStream(newFrameSocket.getInputStream(), BUFFER_SIZE))
             Log.d(TAG, "✅ Frame socket connected to $ipAddress:$FRAME_PORT")
 
-            // CRITICAL: 100ms delay between socket connections
+            // CRITICAL: 200ms delay between socket connections
             // ESP32 needs time to process the first connection before accepting the second.
             // Without this delay, ESP32 may become unstable, leading to WiFi disconnections
             // or the command socket failing to connect properly.
-            delay(100)
+            delay(200)
 
             // Open command socket (port 82, write-only)
             Log.d(TAG, "🔌 Creating command socket for port $COMMAND_PORT...")
