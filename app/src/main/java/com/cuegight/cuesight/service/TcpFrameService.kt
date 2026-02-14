@@ -14,14 +14,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.DataInputStream
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.InetAddress
 import javax.net.SocketFactory
 
-class WebSocketService {
+class TcpFrameService {
     private companion object {
-        private const val TAG = "WebSocketService"
+        private const val TAG = "TcpFrameService"
         private const val DEFAULT_ESP32_IP = "192.168.4.1"
         private const val PORT = 81
         private const val CONNECT_TIMEOUT_MS = 3_000
@@ -30,12 +31,17 @@ class WebSocketService {
         private const val MAX_FRAME_BYTES = 100_000
         private const val MIN_RETRY_DELAY_MS = 500L
         private const val MAX_RETRY_DELAY_MS = 3_000L
+        private const val STATUS_CONNECTING = "STATUS:Connecting"
+        private const val STATUS_STREAMING = "STATUS:Streaming"
+        private const val STATUS_RECONNECTING = "STATUS:Reconnecting"
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val commandMutex = Mutex()
     private var socketFactory: SocketFactory? = null
     private var socket: Socket? = null
     private var input: DataInputStream? = null
+    private var output: OutputStream? = null
     private var readerJob: Job? = null
     private var shouldStayConnected = false
     private var ipAddress: String = DEFAULT_ESP32_IP
@@ -100,7 +106,7 @@ class WebSocketService {
                         Log.w(TAG, "Reachability probe failed, continuing: ${e.message}")
                     }
 
-                    notifyMessage("STATUS:Connecting")
+                    notifyMessage(STATUS_CONNECTING)
                     shouldStayConnected = true
                     closeInternal()
                     val connected = openSocket()
@@ -120,7 +126,16 @@ class WebSocketService {
     }
 
     fun sendCommand(command: String) {
-        Log.d(TAG, "Ignoring command for TCP frame stream: $command")
+        scope.launch(Dispatchers.IO) {
+            commandMutex.withLock {
+                try {
+                    output?.write("$command\n".toByteArray(Charsets.UTF_8))
+                    output?.flush()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to send command over TCP channel: $command", e)
+                }
+            }
+        }
     }
 
     fun disconnect() {
@@ -139,7 +154,7 @@ class WebSocketService {
             while (isActive && shouldStayConnected) {
                 try {
                     if (socket == null || input == null) {
-                        notifyMessage("STATUS:Reconnecting")
+                        notifyMessage(STATUS_RECONNECTING)
                         notifyConnection(false)
                         if (!openSocket()) {
                             delay(retryDelayMs)
@@ -162,7 +177,7 @@ class WebSocketService {
                     Log.e(TAG, "TCP stream read failed: ${e.message}", e)
                     closeInternal()
                     notifyConnection(false)
-                    notifyMessage("STATUS:Reconnecting")
+                    notifyMessage(STATUS_RECONNECTING)
                     delay(retryDelayMs)
                     retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS).coerceAtMost(MAX_RETRY_DELAY_MS)
                 }
@@ -172,14 +187,16 @@ class WebSocketService {
 
     private fun openSocket(): Boolean {
         return try {
-            val newSocket = socketFactory?.createSocket() as? Socket ?: Socket()
+            val newSocket = socketFactory?.createSocket() ?: Socket()
+            // Disable Nagle's algorithm to reduce per-frame latency for small JPEG payloads.
             newSocket.tcpNoDelay = true
             newSocket.soTimeout = READ_TIMEOUT_MS
             newSocket.connect(InetSocketAddress(ipAddress, PORT), CONNECT_TIMEOUT_MS)
             socket = newSocket
             input = DataInputStream(BufferedInputStream(newSocket.getInputStream(), BUFFER_SIZE))
+            output = newSocket.getOutputStream()
             notifyConnection(true)
-            notifyMessage("STATUS:Streaming")
+            notifyMessage(STATUS_STREAMING)
             true
         } catch (e: Exception) {
             Log.e(TAG, "TCP connect failed: ${e.message}", e)
@@ -194,27 +211,32 @@ class WebSocketService {
         } catch (_: Exception) {
         }
         try {
+            output?.close()
+        } catch (_: Exception) {
+        }
+        try {
             socket?.close()
         } catch (_: Exception) {
         }
         input = null
+        output = null
         socket = null
     }
 
     private fun notifyFrame(bytes: ByteArray) {
-        scope.launch {
+        scope.launch(Dispatchers.Main) {
             frameCallback?.invoke(bytes)
         }
     }
 
     private fun notifyMessage(message: String) {
-        scope.launch {
+        scope.launch(Dispatchers.Main) {
             messageCallback?.invoke(message)
         }
     }
 
     private fun notifyConnection(isConnected: Boolean) {
-        scope.launch {
+        scope.launch(Dispatchers.Main) {
             connectionStatusCallback?.invoke(isConnected)
         }
     }

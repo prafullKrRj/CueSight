@@ -23,7 +23,7 @@ import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
-import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.service.TcpFrameService
 import com.cuegight.cuesight.util.NetworkBindingHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -83,7 +83,7 @@ data class SessionState(
 class SessionViewModel(
     private val sessionRepository: SessionRepository,
     private val emotionLogRepository: EmotionLogRepository,
-    private val webSocketService: WebSocketService
+    private val webSocketService: TcpFrameService
 ) : ViewModel() {
 
     private var streamJob: Job? = null
@@ -159,7 +159,7 @@ class SessionViewModel(
         viewModelScope.launch {
             Log.d("SessionViewModel", "🔧 MANUAL CONNECT TRIGGERED")
             Log.d("SessionViewModel", "IP: ${_state.value.ipAddress}")
-            val result = connectWebSocket(_state.value.ipAddress, startStream = false)
+            val result = connectTcpSocket(_state.value.ipAddress, startStream = false)
             Log.d("SessionViewModel", "Manual connect result: $result")
             if (result) {
                 _state.value = _state.value.copy(toastMessage = "Connected to ESP32!")
@@ -180,7 +180,7 @@ class SessionViewModel(
                 // Auto-connect to ESP32 to show connection status - MUST happen before early return!
                 delay(500) // Small delay to let UI settle
                 Log.d("SessionViewModel", "Attempting TCP connection to ${_state.value.ipAddress}:$TCP_PORT")
-                val connected = connectWebSocket(_state.value.ipAddress, startStream = false)
+                val connected = connectTcpSocket(_state.value.ipAddress, startStream = false)
                 Log.d("SessionViewModel", "Connection result: $connected")
 
                 if (studentId <= 0L) {
@@ -238,10 +238,11 @@ class SessionViewModel(
 
             if (_state.value.isConnected) {
                 if (activeMode != SessionMode.PRACTICE) {
+                    sendCommand("STREAM:START")
                     startFrameWatchdog()
                 }
             } else {
-                val connected = connectWebSocket(
+                val connected = connectTcpSocket(
                     _state.value.ipAddress,
                     startStream = activeMode != SessionMode.PRACTICE
                 )
@@ -258,6 +259,8 @@ class SessionViewModel(
     fun stopStreaming() {
         streamJob?.cancel()
         frameWatchdogJob?.cancel()
+        sendCommand("STREAM:STOP")
+        sendCommand("MODE:IDLE")
         webSocketService.disconnect()
         _state.value = _state.value.copy(
             isStreaming = false,
@@ -303,17 +306,17 @@ class SessionViewModel(
     }
 
     fun sendFeedback(feedback: String) {
-        sendWebSocketCommand("FEEDBACK:$feedback")
+        sendCommand("FEEDBACK:$feedback")
     }
 
     fun sendShowAnswer() {
-        sendWebSocketCommand("FEEDBACK:${stripEmoji(lastPredictionLabel)}")
+        sendCommand("FEEDBACK:${stripEmoji(lastPredictionLabel)}")
     }
 
     fun sendLEDCommand(command: String) {
         when (command) {
-            "ON" -> sendWebSocketCommand("LED:ON")
-            "OFF" -> sendWebSocketCommand("LED:OFF")
+            "ON" -> sendCommand("LED:ON")
+            "OFF" -> sendCommand("LED:OFF")
         }
     }
 
@@ -346,7 +349,7 @@ class SessionViewModel(
                     _state.value = _state.value.copy(ipAddress = DEFAULT_ESP32_IP)
                 }
                 repeat(CONNECTION_RETRY_LIMIT) { attempt ->
-                    if (connectWebSocket(targetIp, startStream = true)) {
+                    if (connectTcpSocket(targetIp, startStream = true)) {
                         return@withTimeoutOrNull true
                     }
                     delay(1000L * (attempt + 1))
@@ -402,9 +405,9 @@ class SessionViewModel(
         }
     }
 
-    private suspend fun connectWebSocket(ipAddress: String, startStream: Boolean): Boolean {
+    private suspend fun connectTcpSocket(ipAddress: String, startStream: Boolean): Boolean {
         return try {
-            Log.d("SessionViewModel", "connectWebSocket() called - IP: $ipAddress, startStream: $startStream")
+            Log.d("SessionViewModel", "connectTcpSocket() called - IP: $ipAddress, startStream: $startStream")
             appContext?.let { context ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     val network = NetworkBindingHelper.bindToWiFiNetwork(context)
@@ -418,6 +421,7 @@ class SessionViewModel(
                 pendingReconnect = false
                 lastFrameReceivedAt = System.currentTimeMillis()
                 if (startStream) {
+                    sendCommand("STREAM:START")
                     startFrameWatchdog()
                 }
             }
@@ -585,9 +589,9 @@ class SessionViewModel(
         }
 
         if (!lowConfidence && activeMode != SessionMode.PRACTICE) {
-            sendWebSocketCommand("EMOTION:${stripEmoji(prediction.label)}")
+            sendCommand("EMOTION:${stripEmoji(prediction.label)}")
         } else if (activeMode == SessionMode.PRACTICE) {
-            sendWebSocketCommand("EMOTION:$PRACTICE_OLED_PLACEHOLDER")
+            sendCommand("EMOTION:$PRACTICE_OLED_PLACEHOLDER")
         }
     }
 
@@ -680,7 +684,7 @@ class SessionViewModel(
         return notes.joinToString(" | ")
     }
 
-    private fun sendWebSocketCommand(command: String) {
+    private fun sendCommand(command: String) {
         webSocketService.sendCommand(command)
     }
 
