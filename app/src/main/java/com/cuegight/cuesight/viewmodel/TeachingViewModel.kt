@@ -107,6 +107,12 @@ class TeachingViewModel(
     private var lastEmotionSent: String = ""
     private var appContext: Context? = null
 
+    // MEMORY OPTIMIZATION: Keep only current frame bitmap in memory
+    // Previous frame is automatically garbage collected when replaced
+    // This reduces memory usage from multiple bitmaps to 1 bitmap
+    private var currentBitmap: Bitmap? = null
+    private val bitmapLock = Any()
+
     // Emotion buffering to reduce command traffic (synchronized for thread safety)
     private val emotionBuffer = mutableListOf<String>()
     private val emotionBufferLock = Any()
@@ -293,6 +299,13 @@ class TeachingViewModel(
         )
         frameWatchdogJob?.cancel()
         activeStreamingTimerJob?.cancel()
+        
+        // MEMORY: Release bitmap when streaming stops
+        synchronized(bitmapLock) {
+            currentBitmap?.recycle()
+            currentBitmap = null
+        }
+        
         Log.d("TeachingViewModel", "Streaming stopped")
     }
 
@@ -388,14 +401,28 @@ class TeachingViewModel(
         lastFrameReceivedAt = System.currentTimeMillis()
         _state.value = _state.value.copy(warning = "") // Clear warning when frame received
 
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return
+        // MEMORY OPTIMIZATION: Decode with proper options to reduce memory usage
+        val options = BitmapFactory.Options().apply {
+            // ARGB_8888 for quality (could use RGB_565 to save 50% memory if needed)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inMutable = false  // Immutable bitmap uses less memory
+        }
+        
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return
+        
+        // MEMORY: Replace old bitmap and recycle it to free memory immediately
+        synchronized(bitmapLock) {
+            currentBitmap?.recycle()
+            currentBitmap = bitmap
+        }
+        
         val newFrameCount = _state.value.frameCount + 1
         _state.value = _state.value.copy(
             currentFrame = bitmap,
             frameCount = newFrameCount
         )
 
-        // Process every 3rd frame to reduce load
+        // Process every 3rd frame to reduce ML load
         if (newFrameCount % 3 == 0) {
             detectEmotion(bitmap)
         }
@@ -451,7 +478,8 @@ class TeachingViewModel(
                 predictionDetail = ""
             )
             if (lastEmotionSent != "No face") {
-                webSocketService.sendCommand("EMOTION:No face")
+                // RELIABILITY: Send "No face" as emotion code with redundancy
+                webSocketService.sendEmotionCode("No face", critical = true)
                 lastEmotionSent = "No face"
             }
             return
@@ -497,7 +525,8 @@ class TeachingViewModel(
             }
             
             if (mostCommon != null && mostCommon != lastEmotionSent) {
-                webSocketService.sendCommand("EMOTION:$mostCommon")
+                // RELIABILITY OPTIMIZATION: Use binary emotion codes with redundancy
+                webSocketService.sendEmotionCode(mostCommon, critical = true)
                 lastEmotionSent = mostCommon
                 lastEmotionSentTime = now
 
@@ -547,7 +576,7 @@ class TeachingViewModel(
     fun endSession(status: SessionStatus = SessionStatus.COMPLETED, notes: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Stop streaming
+                // Stop streaming and release bitmap
                 stopStreaming()
 
                 // Disconnect WebSocket
@@ -628,6 +657,12 @@ class TeachingViewModel(
         }
         faceDetector?.close()
         webSocketService.disconnect()
+        
+        // MEMORY: Ensure bitmap is released on ViewModel clear
+        synchronized(bitmapLock) {
+            currentBitmap?.recycle()
+            currentBitmap = null
+        }
 
         // Unbind network when ViewModel is destroyed
         appContext?.let { context ->
