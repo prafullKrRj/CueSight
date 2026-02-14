@@ -1,31 +1,45 @@
 package com.cuegight.cuesight.feature.practice.ui
 
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cuegight.cuesight.feature.practice.data.entity.EmotionMastery
 import com.cuegight.cuesight.feature.practice.data.entity.PracticeGuess
 import com.cuegight.cuesight.feature.practice.data.entity.PracticeSession
 import com.cuegight.cuesight.feature.practice.data.entity.TherapistWeight
 import com.cuegight.cuesight.feature.practice.data.repository.PracticeRepository
 import com.cuegight.cuesight.feature.practice.domain.engine.ErpfEngine
-import com.cuegight.cuesight.feature.practice.domain.model.*
+import com.cuegight.cuesight.feature.practice.domain.model.CwaResult
+import com.cuegight.cuesight.feature.practice.domain.model.ErpiResult
+import com.cuegight.cuesight.feature.practice.domain.model.FeedbackState
+import com.cuegight.cuesight.feature.practice.domain.model.MasteryResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.OutputStreamWriter
 import java.util.UUID
-
-
 
 class PracticeModeViewModel(
     private val repository: PracticeRepository,
     private val erpfEngine: ErpfEngine,
     private val dataService: DataService
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "PracticeModeViewModel"
+    }
 
     private val _currentSessionId = MutableStateFlow(UUID.randomUUID().toString())
     val currentSessionId: StateFlow<String> = _currentSessionId.asStateFlow()
@@ -47,11 +61,17 @@ class PracticeModeViewModel(
     private val _cooldownActive = MutableStateFlow(false)
     val cooldownActive: StateFlow<Boolean> = _cooldownActive.asStateFlow()
 
+    private val _sessionElapsedTime = MutableStateFlow(0L)
+    val sessionElapsedTime: StateFlow<Long> = _sessionElapsedTime.asStateFlow()
+
     private var emotionSetTimestamp: Long = 0L
-    private var feedbackJob: Job? = null
+    private var timerJob: Job? = null
+    private var feedbackDismissJob: Job? = null
 
     init {
         startNewSession()
+        initializeDatabaseDefaults()
+        startSessionTimer()
     }
 
     private fun startNewSession() {
@@ -65,149 +85,16 @@ class PracticeModeViewModel(
             repository.insertSession(
                 PracticeSession(
                     sessionId = sessionId,
-                    startTime = System.currentTimeMillis()
+                    startTime = _sessionStartTime.value
                 )
             )
         }
     }
 
-    fun setTeacherEmotion(emotion: String) {
-        if (_cooldownActive.value) return
-
-        _currentTeacherEmotion.value = emotion
-        emotionSetTimestamp = System.currentTimeMillis()
-    }
-
-    fun submitUserGuess(userGuess: String) {
-        val teacherEmotion = _currentTeacherEmotion.value ?: return
-        if (_cooldownActive.value) return
-
-        val timestamp = System.currentTimeMillis()
-        val responseTime = timestamp - emotionSetTimestamp
-        val isCorrect = teacherEmotion.equals(userGuess, ignoreCase = true)
-
-        // update counts
-        _guessCount.value += 1
-        if (isCorrect) {
-            _correctCount.value += 1
-        }
-
-        // Show feedback
-        val message = if (isCorrect) "Correct! That was $teacherEmotion." else "You guessed $userGuess. The expression was $teacherEmotion."
-        _feedbackState.value = FeedbackState(isCorrect, teacherEmotion, userGuess, message)
-
-        // Handle side effects
-        viewModelScope.launch {
-            // Send to glasses
-            val oledMsg = if (isCorrect) "CORRECT! $teacherEmotion" else "WRONG. It was $teacherEmotion"
-            try {
-                dataService.sendCommand("OLED:5:$oledMsg")
-            } catch (e: Exception) {
-                Log.e("PracticeVM", "Failed to send OLED command", e)
-            }
-
-            // Log to DB
-            repository.insertGuess(
-                PracticeGuess(
-                    sessionId = _currentSessionId.value,
-                    timestamp = timestamp,
-                    teacherEmotion = teacherEmotion,
-                    userGuess = userGuess,
-                    isCorrect = isCorrect,
-                    responseTimeMs = responseTime
-                )
-            )
-
-            // Update Mastery
-            erpfEngine.updateMasteryAfterGuess(teacherEmotion, isCorrect)
-
-            // Cooldown and reset
-            _cooldownActive.value = true
-            _currentTeacherEmotion.value = null // Hide valid options or reset selection state
-
-            delay(3000) // 3s cooldown
-
-            _feedbackState.value = null
-            _cooldownActive.value = false
-        }
-    }
-
-    fun endSession() {
-        val endTime = System.currentTimeMillis()
-        val total = _guessCount.value
-        val correct = _correctCount.value
-        val accuracy = if (total > 0) correct.toFloat() / total else 0f
-
+    private fun initializeDatabaseDefaults() {
         viewModelScope.launch(Dispatchers.IO) {
-            val session = repository.getSession(_currentSessionId.value)
-            session?.let {
-                repository.updateSession(
-                    it.copy(
-                        endTime = endTime,
-                        totalGuesses = total,
-                        correctGuesses = correct,
-                        sessionAccuracy = accuracy
-                    )
-                )
-            }
-        }
-    }
-
-    private val _sessionElapsedTime = MutableStateFlow(0L)
-    val sessionElapsedTime: StateFlow<Long> = _sessionElapsedTime.asStateFlow()
-
-    private var timerJob: Job? = null
-    private var feedbackDismissJob: Job? = null
-
-    init {
-        initializeSession()
-        startSessionTimer()
-    }
-
-    private fun initializeSession() {
-        viewModelScope.launch {
-            // Create session record
-            val session = PracticeSession(
-                sessionId = currentSessionId,
-                startTime = sessionStartTime
-            )
-            repository.insertSession(session)
-
-            // Pre-populate tables if needed
-            initializeDatabaseDefaults()
-        }
-    }
-
-    private suspend fun initializeDatabaseDefaults() {
-        val emotions = Emotion.getAllEmotions()
-
-        // Check and populate EmotionMastery
-        val existingMastery = repository.getAllEmotionMasterySync()
-        if (existingMastery.isEmpty()) {
-            emotions.forEach { emotion ->
-                repository.insertEmotionMastery(
-                    EmotionMastery(
-                        emotion = emotion,
-                        lambda = 1.0f,
-                        lastCorrectTimestamp = 0L,
-                        totalAttempts = 0,
-                        correctAttempts = 0
-                    )
-                )
-            }
-        }
-
-        // Check and populate TherapistWeight
-        val existingWeights = repository.getAllTherapistWeightsSync()
-        if (existingWeights.isEmpty()) {
-            emotions.forEach { emotion ->
-                repository.insertTherapistWeight(
-                    TherapistWeight(
-                        emotion = emotion,
-                        weight = 0.20f
-                    )
-                )
-            }
+            repository.initializeMasteryIfEmpty()
+            repository.initializeWeightsIfEmpty()
         }
     }
 
@@ -215,7 +102,7 @@ class PracticeModeViewModel(
         timerJob = viewModelScope.launch {
             while (true) {
                 delay(1000)
-                _sessionElapsedTime.value = System.currentTimeMillis() - sessionStartTime
+                _sessionElapsedTime.value = System.currentTimeMillis() - _sessionStartTime.value
             }
         }
     }
@@ -225,43 +112,36 @@ class PracticeModeViewModel(
 
         _currentTeacherEmotion.value = emotion
         emotionSetTimestamp = System.currentTimeMillis()
-        Log.d(TAG, "Teacher selected emotion: $emotion")
     }
 
     fun submitUserGuess(guess: String) {
         val teacherEmotion = _currentTeacherEmotion.value ?: return
+        if (_cooldownActive.value) return
 
         viewModelScope.launch {
             val responseTime = System.currentTimeMillis() - emotionSetTimestamp
             val isCorrect = teacherEmotion.equals(guess, ignoreCase = true)
 
-            // Update counts
             _guessCount.value += 1
             if (isCorrect) {
                 _correctCount.value += 1
             }
 
-            // Send OLED feedback
             sendOledFeedback(isCorrect, teacherEmotion)
-
-            // Show phone feedback
             showFeedback(isCorrect, teacherEmotion, guess)
 
-            // Log to database
-            val practiceGuess = PracticeGuess(
-                sessionId = currentSessionId,
-                timestamp = System.currentTimeMillis(),
-                teacherEmotion = teacherEmotion,
-                userGuess = guess,
-                isCorrect = isCorrect,
-                responseTimeMs = responseTime
+            repository.insertGuess(
+                PracticeGuess(
+                    sessionId = _currentSessionId.value,
+                    timestamp = System.currentTimeMillis(),
+                    teacherEmotion = teacherEmotion,
+                    userGuess = guess,
+                    isCorrect = isCorrect,
+                    responseTimeMs = responseTime
+                )
             )
-            repository.insertGuess(practiceGuess)
 
-            // Update emotion mastery
             erpfEngine.updateMasteryAfterGuess(teacherEmotion, isCorrect)
-
-            // Reset and cooldown
             resetForNextRound()
             startCooldown()
         }
@@ -289,9 +169,13 @@ class PracticeModeViewModel(
             "You guessed $userGuess. The expression was $teacherEmotion."
         }
 
-        _feedbackState.value = FeedbackState(message, isCorrect)
+        _feedbackState.value = FeedbackState(
+            isCorrect = isCorrect,
+            teacherEmotion = teacherEmotion,
+            userGuess = userGuess,
+            message = message
+        )
 
-        // Auto-dismiss after 3 seconds
         feedbackDismissJob?.cancel()
         feedbackDismissJob = viewModelScope.launch {
             delay(3000)
@@ -320,15 +204,16 @@ class PracticeModeViewModel(
                 0f
             }
 
-            val session = repository.getSessionById(currentSessionId)
+            val session = repository.getSession(_currentSessionId.value)
             session?.let {
-                val updatedSession = it.copy(
-                    endTime = System.currentTimeMillis(),
-                    totalGuesses = _guessCount.value,
-                    correctGuesses = _correctCount.value,
-                    sessionAccuracy = accuracy
+                repository.updateSession(
+                    it.copy(
+                        endTime = System.currentTimeMillis(),
+                        totalGuesses = _guessCount.value,
+                        correctGuesses = _correctCount.value,
+                        sessionAccuracy = accuracy
+                    )
                 )
-                repository.updateSession(updatedSession)
             }
 
             timerJob?.cancel()
@@ -349,11 +234,10 @@ class PracticeModeViewModel(
 
     suspend fun exportSessionsToCsv(context: Context): Uri? = withContext(Dispatchers.IO) {
         try {
-            val guesses = repository.getAllGuessesSync()
+            val guesses = repository.getAllGuesses()
             val csvContent = buildCsvContent(guesses)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Use MediaStore for Android 10+
                 val resolver = context.contentResolver
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, "cueSight_practice_export_${System.currentTimeMillis()}.csv")
@@ -371,8 +255,7 @@ class PracticeModeViewModel(
                 }
                 uri
             } else {
-                // Fallback for older versions
-                null // Simplified - would need storage permission handling
+                null
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to export CSV", e)
@@ -396,11 +279,11 @@ class PracticeModeViewModel(
         }
 
         weights.forEach { (emotion, weight) ->
-            val existing = repository.getTherapistWeightByEmotion(emotion)
-            if (existing != null) {
-                repository.updateTherapistWeight(existing.copy(weight = weight))
+            val existing = repository.getWeight(emotion)
+            if (existing == null) {
+                repository.insertWeight(TherapistWeight(emotion = emotion, weight = weight))
             } else {
-                repository.insertTherapistWeight(TherapistWeight(emotion, weight))
+                repository.updateWeight(existing.copy(weight = weight))
             }
         }
         return true
@@ -413,8 +296,6 @@ class PracticeModeViewModel(
     }
 }
 
-// Placeholder for DataService - assumed to exist
 interface DataService {
     suspend fun sendCommand(command: String)
 }
-

@@ -10,7 +10,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.cuegight.cuesight.feature.practice.domain.model.Emotion
 import com.cuegight.cuesight.feature.practice.ui.components.*
 import java.util.concurrent.TimeUnit
@@ -19,7 +18,7 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun PracticeModeScreen(
     onNavigateToAnalytics: () -> Unit,
-    viewModel: PracticeModeViewModel = hiltViewModel()
+    viewModel: PracticeModeViewModel
 ) {
     val currentTeacherEmotion by viewModel.currentTeacherEmotion.collectAsState()
     val guessCount by viewModel.guessCount.collectAsState()
@@ -203,4 +202,3 @@ private fun formatElapsedTime(milliseconds: Long): String {
     val seconds = TimeUnit.MILLISECONDS.toSeconds(milliseconds) % 60
     return String.format("%02d:%02d", minutes, seconds)
 }
-

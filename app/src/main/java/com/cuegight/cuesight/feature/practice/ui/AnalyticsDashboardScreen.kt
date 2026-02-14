@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.cuegight.cuesight.feature.practice.domain.model.*
 import com.cuegight.cuesight.feature.practice.ui.components.*
 import kotlinx.coroutines.launch
@@ -23,7 +22,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AnalyticsDashboardScreen(
     onNavigateBack: () -> Unit,
-    viewModel: PracticeModeViewModel = hiltViewModel()
+    viewModel: PracticeModeViewModel
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -47,7 +46,7 @@ fun AnalyticsDashboardScreen(
 
     if (showWeightDialog) {
         WeightAdjustmentDialog(
-            currentWeights = cwaResult?.emotions?.associateWith { 0.2f } ?: emptyMap(),
+            currentWeights = cwaResult?.weights ?: emptyMap(),
             onDismiss = { showWeightDialog = false },
             onSave = { weights ->
                 scope.launch {
@@ -114,7 +113,7 @@ fun AnalyticsDashboardScreen(
             // Card 4: Confusion-Weighted Accuracy
             item {
                 CwaCard(
-                    cwaResult = cwaResult,
+                    result = cwaResult,
                     onAdjustWeights = { showWeightDialog = true }
                 )
             }
@@ -290,4 +289,3 @@ fun CwaCard(result: CwaResult?, onAdjustWeights: () -> Unit) {
         }
     }
 }
-

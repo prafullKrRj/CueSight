@@ -147,6 +147,10 @@ class PracticeRepository(
         therapistWeightDao.getByEmotion(emotion)
     }
 
+    suspend fun insertWeight(weight: TherapistWeight) = withContext(Dispatchers.IO) {
+        therapistWeightDao.insert(weight)
+    }
+
     suspend fun updateWeight(weight: TherapistWeight) = withContext(Dispatchers.IO) {
         try {
             therapistWeightDao.update(weight)
@@ -206,4 +210,3 @@ class PracticeRepository(
         }
     }
 }
-
