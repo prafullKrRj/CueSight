@@ -3,44 +3,28 @@ package com.cuegight.cuesight.service
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.*
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okio.ByteString
 import java.net.InetAddress
 
-private const val DEFAULT_ESP32_IP = "192.168.4.1"
-private const val WEBSOCKET_PORT = 8888
-
-data class WebSocketState(
-    val isConnected: Boolean = false,
-    val ipAddress: String = DEFAULT_ESP32_IP,
-    val error: String = ""
-)
-
-/**
- * Core WebSocket service for communicating with ESP32-CAM.
- * Manages connection, state, and messaging.
- */
 class WebSocketService {
-
     private val client = OkHttpClient()
     private var webSocket: WebSocket? = null
+    private var ipAddress: String = "192.168.4.1"
+    private val port = 8888
 
-    // Callbacks
     private var frameCallback: ((ByteArray) -> Unit)? = null
     private var messageCallback: ((String) -> Unit)? = null
     private var connectionStatusCallback: ((Boolean) -> Unit)? = null
 
-    // State management
-    private val _state = MutableStateFlow(WebSocketState())
-    val state: StateFlow<WebSocketState> = _state.asStateFlow()
-
     fun setIpAddress(ip: String) {
-        _state.value = _state.value.copy(ipAddress = ip)
+        ipAddress = ip
     }
 
     fun setFrameCallback(callback: (ByteArray) -> Unit) {
@@ -55,27 +39,17 @@ class WebSocketService {
         connectionStatusCallback = callback
     }
 
-    /**
-     * Connects to the WebSocket. A new IP can be optionally provided.
-     */
-    suspend fun connect(ipAddress: String = _state.value.ipAddress): Boolean {
-        // Update IP in state if overridden
-        if (ipAddress != _state.value.ipAddress) {
-            setIpAddress(ipAddress)
-        }
-
+    suspend fun connect(ip: String): Boolean {
+        ipAddress = ip
         return withContext(Dispatchers.IO) {
             try {
-                Log.d("WebSocketService", "Connecting to $ipAddress:$WEBSOCKET_PORT")
+                Log.d("WebSocketService", "Connecting to $ipAddress:$port")
 
-                // Check availability
+                // Check if we can reach ESP32
                 try {
                     val reachable = InetAddress.getByName(ipAddress).isReachable(3000)
                     if (!reachable) {
                         Log.e("WebSocketService", "ESP32 IP $ipAddress is NOT REACHABLE")
-                        _state.value = _state.value.copy(
-                            error = "Cannot reach ESP32. Connect to ESP32 WiFi first!"
-                        )
                         return@withContext false
                     }
                     Log.d("WebSocketService", "ESP32 IP is reachable")
@@ -84,8 +58,10 @@ class WebSocketService {
                 }
 
                 val connectionResult = CompletableDeferred<Boolean>()
-                val wsUrl = "ws://$ipAddress:$WEBSOCKET_PORT"
-                val request = Request.Builder().url(wsUrl).build()
+                val wsUrl = "ws://$ipAddress:$port"
+                val request = Request.Builder()
+                    .url(wsUrl)
+                    .build()
 
                 webSocket?.close(1000, "Reconnecting")
                 webSocket = client.newWebSocket(request, createListener(connectionResult))
@@ -98,18 +74,37 @@ class WebSocketService {
                 result
             } catch (e: Exception) {
                 Log.e("WebSocketService", "Connection error: ${e.message}", e)
-                _state.value = _state.value.copy(error = e.message ?: "Unknown error")
                 false
             }
         }
     }
 
+    fun sendCommand(command: String) {
+        val socket = webSocket
+        if (socket == null) {
+            Log.w("WebSocketService", "Cannot send command, socket is null")
+            return
+        }
+        val success = socket.send(command)
+        if (success) {
+            Log.d("WebSocketService", "Sent command: $command")
+        } else {
+            Log.e("WebSocketService", "Failed to send command: $command")
+        }
+    }
+
+    fun disconnect() {
+        webSocket?.close(1000, "Client disconnect")
+        webSocket = null
+        connectionStatusCallback?.invoke(false)
+        Log.d("WebSocketService", "Disconnected")
+    }
+
     private fun createListener(connectionResult: CompletableDeferred<Boolean>): WebSocketListener {
         return object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d("WebSocketService", "WebSocket OPENED")
+                Log.d("WebSocketService", "WebSocket opened")
                 connectionResult.complete(true)
-                _state.value = _state.value.copy(isConnected = true, error = "")
                 connectionStatusCallback?.invoke(true)
             }
 
@@ -123,11 +118,7 @@ class WebSocketService {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e("WebSocketService", "WebSocket FAILURE: ${t.message}", t)
-                _state.value = _state.value.copy(
-                    isConnected = false,
-                    error = t.message ?: "Connection failed"
-                )
+                Log.e("WebSocketService", "WebSocket failure: ${t.message}", t)
                 connectionStatusCallback?.invoke(false)
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
@@ -135,8 +126,7 @@ class WebSocketService {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d("WebSocketService", "WebSocket CLOSED - Code: $code, Reason: $reason")
-                _state.value = _state.value.copy(isConnected = false)
+                Log.d("WebSocketService", "WebSocket closed: $code - $reason")
                 connectionStatusCallback?.invoke(false)
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
@@ -144,29 +134,4 @@ class WebSocketService {
             }
         }
     }
-
-    fun sendCommand(command: String): Boolean {
-        val socket = webSocket
-        if (socket == null) {
-            Log.w("WebSocketService", "Cannot send command, socket is null")
-            return false
-        }
-        val result = socket.send(command)
-        if (result) {
-            Log.d("WebSocketService", "Sent: $command")
-        } else {
-            Log.w("WebSocketService", "Failed to send: $command")
-        }
-        return result
-    }
-
-    fun disconnect() {
-        webSocket?.close(1000, "Client disconnect")
-        webSocket = null
-        _state.value = _state.value.copy(isConnected = false)
-        connectionStatusCallback?.invoke(false)
-        Log.d("WebSocketService", "Disconnected")
-    }
-
-    fun isConnected(): Boolean = _state.value.isConnected
 }
