@@ -102,13 +102,15 @@ const char* const EMOTION_STRINGS[] PROGMEM = {
 
 // Helper function to get emotion string from PROGMEM
 void getEmotionString(uint8_t code, char* buffer, size_t bufferSize) {
+  if (bufferSize == 0) return;  // Safety check
+  
   if (code == 0 || code > 7) {
-    strncpy_P(buffer, EMOTION_STR_WAITING, bufferSize);
+    strncpy_P(buffer, EMOTION_STR_WAITING, bufferSize - 1);
   } else {
     const char* emotionPtr = (const char*)pgm_read_ptr(&EMOTION_STRINGS[code]);
-    strncpy_P(buffer, emotionPtr, bufferSize);
+    strncpy_P(buffer, emotionPtr, bufferSize - 1);
   }
-  buffer[bufferSize - 1] = '\0';
+  buffer[bufferSize - 1] = '\0';  // Always null-terminate at last position
 }
 
 // ============================================================================
@@ -196,7 +198,7 @@ void showEmotionDisplay(uint8_t emotionCode) {
   display.display();
 }
 
-// Show feedback text (limited to 32 chars to prevent buffer overflow)
+// Show feedback text (limited to 16 chars to fit display and prevent buffer overflow)
 void showFeedbackDisplay(const char* feedbackText) {
   display.clearDisplay();
   display.setTextSize(1);
@@ -205,10 +207,12 @@ void showFeedbackDisplay(const char* feedbackText) {
   display.println(F("Feedback:"));
   display.setTextSize(2);
   display.setCursor(0, 16);
-  // Truncate feedback to fit display
+  // Safely truncate feedback to fit display
   char truncated[17];
-  strncpy(truncated, feedbackText, 16);
-  truncated[16] = '\0';
+  size_t len = strlen(feedbackText);
+  if (len > 16) len = 16;
+  memcpy(truncated, feedbackText, len);
+  truncated[len] = '\0';
   display.println(truncated);
   display.setTextSize(1);
   display.setCursor(0, 50);
@@ -685,8 +689,9 @@ void loop() {
             frameClient.stop();
           }
           
+          // Show error without long blocking delay
           fastOLEDUpdate("Low Memory!", "< 25KB free", 2);
-          delay(3000);  // Show error for 3 seconds
+          delay(1000);  // Reduced from 3000ms to 1000ms to stay responsive
           fastOLEDUpdate("Restart ESP32", "to recover", 1);
         }
       } else if (freeHeap < 30000) {
