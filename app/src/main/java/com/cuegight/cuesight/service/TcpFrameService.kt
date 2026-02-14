@@ -213,9 +213,7 @@ class TcpFrameService {
                 } catch (e: SocketTimeoutException) {
                     // Don't reconnect on timeout - socket is still alive
                     consecutiveTimeouts++
-                    if (consecutiveTimeouts <= 3) {
-                        Log.w(TAG, "⏱️ Read timeout #$consecutiveTimeouts (socket still alive, waiting for frames...)")
-                    }
+                    Log.w(TAG, "⏱️ Read timeout #$consecutiveTimeouts (socket still alive, waiting for frames...)")
 
                     if (consecutiveTimeouts > 3) {
                         // Only reconnect after 3 consecutive timeouts (30 seconds)
@@ -243,7 +241,7 @@ class TcpFrameService {
         }
     }
 
-    private fun openSockets(): Boolean {
+    private suspend fun openSockets(): Boolean {
         return try {
             Log.d(TAG, "🔌 Opening sockets...")
             Log.d(TAG, "🔌 SocketFactory available: ${socketFactory != null}")
@@ -255,27 +253,36 @@ class TcpFrameService {
             
             // Open frame socket (port 81, read-only)
             Log.d(TAG, "🔌 Creating frame socket for port $FRAME_PORT...")
-            val newFrameSocket = socketFactory?.createSocket() ?: Socket()
-            newFrameSocket.tcpNoDelay = true
-            newFrameSocket.soTimeout = READ_TIMEOUT_MS
-            newFrameSocket.setReceiveBufferSize(BUFFER_SIZE)
+            val newFrameSocket = withContext(Dispatchers.IO) {
+                (socketFactory?.createSocket() ?: Socket()).apply {
+                    tcpNoDelay = true
+                    soTimeout = READ_TIMEOUT_MS
+                    setReceiveBufferSize(BUFFER_SIZE)
+                }
+            }
             Log.d(TAG, "🔌 Connecting frame socket to $ipAddress:$FRAME_PORT...")
-            newFrameSocket.connect(InetSocketAddress(ipAddress, FRAME_PORT), CONNECT_TIMEOUT_MS)
+            withContext(Dispatchers.IO) {
+                newFrameSocket.connect(InetSocketAddress(ipAddress, FRAME_PORT), CONNECT_TIMEOUT_MS)
+            }
             frameSocket = newFrameSocket
             input = DataInputStream(BufferedInputStream(newFrameSocket.getInputStream(), BUFFER_SIZE))
             Log.d(TAG, "✅ Frame socket connected to $ipAddress:$FRAME_PORT")
 
             // Small delay to let ESP32 process the first connection
-            Thread.sleep(100)
+            delay(100)
 
             // Open command socket (port 82, write-only)
             Log.d(TAG, "🔌 Creating command socket for port $COMMAND_PORT...")
-            val newCommandSocket = socketFactory?.createSocket() ?: Socket()
-            newCommandSocket.tcpNoDelay = true
-            // No read timeout needed for write-only socket
-            newCommandSocket.setSendBufferSize(4096)
+            val newCommandSocket = withContext(Dispatchers.IO) {
+                (socketFactory?.createSocket() ?: Socket()).apply {
+                    tcpNoDelay = true
+                    setSendBufferSize(4096)
+                }
+            }
             Log.d(TAG, "🔌 Connecting command socket to $ipAddress:$COMMAND_PORT...")
-            newCommandSocket.connect(InetSocketAddress(ipAddress, COMMAND_PORT), CONNECT_TIMEOUT_MS)
+            withContext(Dispatchers.IO) {
+                newCommandSocket.connect(InetSocketAddress(ipAddress, COMMAND_PORT), CONNECT_TIMEOUT_MS)
+            }
             commandSocket = newCommandSocket
             output = newCommandSocket.getOutputStream()
             Log.d(TAG, "✅ Command socket connected to $ipAddress:$COMMAND_PORT")
