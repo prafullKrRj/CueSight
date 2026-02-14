@@ -68,6 +68,7 @@ const char* ssid = "ESP32-CAM";       // ESP32 AP SSID
 const char* password = "12345678";   // TODO: Change this
 
 #define TCP_PORT 81
+#define MAX_COMMAND_LENGTH 128
 
 // ============================================================================
 // GLOBALS
@@ -99,6 +100,7 @@ bool wifiWasDisconnected = false;
 
 // Display buffer
 char displayBuffer[64];
+String commandBuffer = "";
 
 // ============================================================================
 // FAST OLED UPDATE
@@ -444,20 +446,21 @@ void loop() {
     if (connectedClient && connectedClient.connected()) {
       connectedClient.stop();
     }
+    commandBuffer = "";
+    streamingActive = false;
     connectedClient = incomingClient;
     connectedClient.setNoDelay(true);
-    streamingActive = false;
     Serial.printf("[TCP] Client connected from %s\n", connectedClient.remoteIP().toString().c_str());
   }
 
   if (connectedClient && !connectedClient.connected()) {
     Serial.println("[TCP] Client disconnected");
     connectedClient.stop();
+    commandBuffer = "";
     streamingActive = false;
   }
 
   // Process line-delimited commands from Android
-  static String commandBuffer = "";
   while (connectedClient && connectedClient.connected() && connectedClient.available()) {
     char c = (char)connectedClient.read();
     if (c == '\n') {
@@ -465,7 +468,8 @@ void loop() {
       commandBuffer = "";
     } else if (c != '\r') {
       commandBuffer += c;
-      if (commandBuffer.length() > 128) {
+      if (commandBuffer.length() > MAX_COMMAND_LENGTH) {
+        Serial.println("[TCP] Command too long, dropping buffer");
         commandBuffer = "";
       }
     }
@@ -489,8 +493,9 @@ void loop() {
       (uint8_t)((frameLen >> 8) & 0xFF),
       (uint8_t)(frameLen & 0xFF)
     };
-    if (connectedClient.write(header, sizeof(header)) != sizeof(header) ||
-        connectedClient.write(fb->buf, fb->len) != fb->len) {
+    size_t headerWritten = connectedClient.write(header, sizeof(header));
+    size_t frameWritten = connectedClient.write(fb->buf, fb->len);
+    if (headerWritten != sizeof(header) || frameWritten != (size_t)fb->len) {
       Serial.println("[TCP] Write failed, disconnecting client");
       connectedClient.stop();
       streamingActive = false;
