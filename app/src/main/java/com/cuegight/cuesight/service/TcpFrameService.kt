@@ -69,6 +69,13 @@ class TcpFrameService {
         socketFactory = network.socketFactory
         Log.d(TAG, "✅ Socket factory bound successfully")
     }
+    
+    private fun warnIfSocketFactoryMissing() {
+        if (socketFactory == null) {
+            Log.w(TAG, "⚠️ WARNING: No socket factory! Network binding may not have been called.")
+            Log.w(TAG, "⚠️ Connection may fail if device has mobile data enabled.")
+        }
+    }
 
     fun setFrameCallback(callback: (ByteArray) -> Unit) {
         frameCallback = callback
@@ -93,11 +100,7 @@ class TcpFrameService {
                     }
 
                     Log.d(TAG, "🔌 Connecting to $ipAddress (Frame:$FRAME_PORT, Command:$COMMAND_PORT)")
-                    
-                    if (socketFactory == null) {
-                        Log.w(TAG, "⚠️ WARNING: No socket factory! Network binding may not have been called.")
-                        Log.w(TAG, "⚠️ Connection may fail if device has mobile data enabled.")
-                    }
+                    warnIfSocketFactoryMissing()
 
                     notifyMessage(STATUS_CONNECTING)
 
@@ -244,25 +247,17 @@ class TcpFrameService {
     private suspend fun openSockets(): Boolean {
         return try {
             Log.d(TAG, "🔌 Opening sockets...")
-            
-            if (socketFactory == null) {
-                Log.w(TAG, "⚠️ WARNING: No socket factory bound! Connection may fail if device has mobile data.")
-                Log.w(TAG, "⚠️ Make sure NetworkBindingHelper.bindToWiFiNetwork() was called BEFORE connect().")
-            }
+            warnIfSocketFactoryMissing()
             
             // Open frame socket (port 81, read-only)
             Log.d(TAG, "🔌 Creating frame socket for port $FRAME_PORT...")
-            val newFrameSocket = withContext(Dispatchers.IO) {
-                (socketFactory?.createSocket() ?: Socket()).apply {
-                    tcpNoDelay = true
-                    soTimeout = READ_TIMEOUT_MS
-                    setReceiveBufferSize(BUFFER_SIZE)
-                }
+            val newFrameSocket = (socketFactory?.createSocket() ?: Socket()).apply {
+                tcpNoDelay = true
+                soTimeout = READ_TIMEOUT_MS
+                setReceiveBufferSize(BUFFER_SIZE)
             }
             Log.d(TAG, "🔌 Connecting frame socket to $ipAddress:$FRAME_PORT...")
-            withContext(Dispatchers.IO) {
-                newFrameSocket.connect(InetSocketAddress(ipAddress, FRAME_PORT), CONNECT_TIMEOUT_MS)
-            }
+            newFrameSocket.connect(InetSocketAddress(ipAddress, FRAME_PORT), CONNECT_TIMEOUT_MS)
             frameSocket = newFrameSocket
             input = DataInputStream(BufferedInputStream(newFrameSocket.getInputStream(), BUFFER_SIZE))
             Log.d(TAG, "✅ Frame socket connected to $ipAddress:$FRAME_PORT")
@@ -272,16 +267,12 @@ class TcpFrameService {
 
             // Open command socket (port 82, write-only)
             Log.d(TAG, "🔌 Creating command socket for port $COMMAND_PORT...")
-            val newCommandSocket = withContext(Dispatchers.IO) {
-                (socketFactory?.createSocket() ?: Socket()).apply {
-                    tcpNoDelay = true
-                    setSendBufferSize(4096)
-                }
+            val newCommandSocket = (socketFactory?.createSocket() ?: Socket()).apply {
+                tcpNoDelay = true
+                setSendBufferSize(4096)
             }
             Log.d(TAG, "🔌 Connecting command socket to $ipAddress:$COMMAND_PORT...")
-            withContext(Dispatchers.IO) {
-                newCommandSocket.connect(InetSocketAddress(ipAddress, COMMAND_PORT), CONNECT_TIMEOUT_MS)
-            }
+            newCommandSocket.connect(InetSocketAddress(ipAddress, COMMAND_PORT), CONNECT_TIMEOUT_MS)
             commandSocket = newCommandSocket
             output = newCommandSocket.getOutputStream()
             Log.d(TAG, "✅ Command socket connected to $ipAddress:$COMMAND_PORT")
