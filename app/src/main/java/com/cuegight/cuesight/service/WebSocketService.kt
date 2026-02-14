@@ -2,39 +2,42 @@ package com.cuegight.cuesight.service
 
 import android.net.Network
 import android.util.Log
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
+import java.io.BufferedInputStream
+import java.io.DataInputStream
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.InetAddress
-import java.util.concurrent.TimeUnit
+import javax.net.SocketFactory
 
 class WebSocketService {
     private companion object {
         private const val TAG = "WebSocketService"
         private const val DEFAULT_ESP32_IP = "192.168.4.1"
-        private const val PORT = 8888
-        private const val MAX_CONNECTION_ATTEMPTS = 2
-        private const val CONNECTION_RETRY_DELAY_MS = 500L
+        private const val PORT = 81
+        private const val CONNECT_TIMEOUT_MS = 3_000
+        private const val READ_TIMEOUT_MS = 5_000
+        private const val BUFFER_SIZE = 32_768
+        private const val MAX_FRAME_BYTES = 100_000
+        private const val MIN_RETRY_DELAY_MS = 500L
+        private const val MAX_RETRY_DELAY_MS = 3_000L
     }
 
-    private var client = OkHttpClient.Builder()
-        .retryOnConnectionFailure(true)
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .writeTimeout(5, TimeUnit.SECONDS)
-        .pingInterval(20, TimeUnit.SECONDS)
-        .build()
-    private var webSocket: WebSocket? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var socketFactory: SocketFactory? = null
+    private var socket: Socket? = null
+    private var input: DataInputStream? = null
+    private var readerJob: Job? = null
+    private var shouldStayConnected = false
     private var ipAddress: String = DEFAULT_ESP32_IP
     private val connectionMutex = Mutex()
 
@@ -48,15 +51,13 @@ class WebSocketService {
 
     /**
      * CRITICAL FIX FOR "ENETUNREACH":
-     * Binds the OkHttp client to a specific Android network interface.
+     * Binds socket creation to a specific Android network interface.
      * This forces traffic to use WiFi even when it has no internet.
      * Must be called after connecting to ESP32 WiFi AP.
      */
     fun bindToNetwork(network: Network) {
-        Log.d(TAG, "Binding OkHttp client to specific network: $network")
-        client = client.newBuilder()
-            .socketFactory(network.socketFactory)
-            .build()
+        Log.d(TAG, "Binding socket factory to specific network: $network")
+        socketFactory = network.socketFactory
     }
 
     fun setFrameCallback(callback: (ByteArray) -> Unit) {
@@ -85,13 +86,13 @@ class WebSocketService {
                         return@withLock false
                     }
 
-                    Log.d(TAG, "Connecting to $ipAddress:$PORT")
+                    Log.d(TAG, "Connecting to $ipAddress:$PORT (TCP)")
 
                     // Best-effort reachability check (some devices/networks block ICMP probes).
                     try {
                         val reachable = InetAddress.getByName(ipAddress).isReachable(3000)
                         if (!reachable) {
-                            Log.w(TAG, "IP unreachable via probe, attempting WebSocket connection")
+                            Log.w(TAG, "IP unreachable via probe, attempting TCP connection")
                         } else {
                             Log.d(TAG, "ESP32 IP is reachable")
                         }
@@ -99,29 +100,17 @@ class WebSocketService {
                         Log.w(TAG, "Reachability probe failed, continuing: ${e.message}")
                     }
 
-                    val wsUrl = "ws://$ipAddress:$PORT"
-                    val request = Request.Builder().url(wsUrl).build()
-
-                    repeat(MAX_CONNECTION_ATTEMPTS) { attempt ->
-                        val connectionResult = CompletableDeferred<Boolean>()
-
-                        webSocket?.cancel()
-                        webSocket = null
-                        webSocket = client.newWebSocket(request, createListener(connectionResult))
-
-                        val result = withTimeoutOrNull(10_000L) {
-                            connectionResult.await()
-                        } ?: false
-
-                        Log.d(TAG, "Connection attempt ${attempt + 1} result: $result")
-                        if (result) return@withLock true
-
-                        webSocket?.cancel()
-                        webSocket = null
-                        if (attempt < MAX_CONNECTION_ATTEMPTS - 1) delay(CONNECTION_RETRY_DELAY_MS)
+                    notifyMessage("STATUS:Connecting")
+                    shouldStayConnected = true
+                    closeInternal()
+                    val connected = openSocket()
+                    if (!connected) {
+                        shouldStayConnected = false
+                        return@withLock false
                     }
 
-                    false
+                    startReaderLoop()
+                    true
                 } catch (e: Exception) {
                     Log.e(TAG, "Connection error: ${e.message}", e)
                     false
@@ -131,71 +120,102 @@ class WebSocketService {
     }
 
     fun sendCommand(command: String) {
-        val socket = webSocket
-        if (socket == null) {
-            Log.w(TAG, "Cannot send command, socket is null")
-            return
-        }
-        val success = socket.send(command)
-        if (success) {
-            Log.d(TAG, "Sent command: $command")
-        } else {
-            Log.e(TAG, "Failed to send command: $command")
-        }
+        Log.d(TAG, "Ignoring command for TCP frame stream: $command")
     }
 
     fun disconnect() {
-        webSocket?.close(1000, "Client disconnect")
-        webSocket = null
-        connectionStatusCallback?.invoke(false)
+        shouldStayConnected = false
+        readerJob?.cancel()
+        readerJob = null
+        closeInternal()
+        notifyConnection(false)
         Log.d(TAG, "Disconnected")
     }
 
-    private fun createListener(connectionResult: CompletableDeferred<Boolean>): WebSocketListener {
-        return object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                synchronized(this@WebSocketService) {
-                    this@WebSocketService.webSocket = webSocket
-                }
-                Log.d(TAG, "WebSocket opened")
-                connectionResult.complete(true)
-                connectionStatusCallback?.invoke(true)
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                Log.d(TAG, "Received text: $text")
-                messageCallback?.invoke(text)
-            }
-
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                frameCallback?.invoke(bytes.toByteArray())
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket failure: ${t.message}", t)
-                synchronized(this@WebSocketService) {
-                    if (this@WebSocketService.webSocket === webSocket) {
-                        this@WebSocketService.webSocket = null
+    private fun startReaderLoop() {
+        readerJob?.cancel()
+        readerJob = scope.launch(Dispatchers.IO) {
+            var retryDelayMs = MIN_RETRY_DELAY_MS
+            while (isActive && shouldStayConnected) {
+                try {
+                    if (socket == null || input == null) {
+                        notifyMessage("STATUS:Reconnecting")
+                        notifyConnection(false)
+                        if (!openSocket()) {
+                            delay(retryDelayMs)
+                            retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS).coerceAtMost(MAX_RETRY_DELAY_MS)
+                            continue
+                        }
+                        retryDelayMs = MIN_RETRY_DELAY_MS
                     }
-                }
-                connectionStatusCallback?.invoke(false)
-                if (!connectionResult.isCompleted) {
-                    connectionResult.complete(false)
-                }
-            }
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closed: $code - $reason")
-                synchronized(this@WebSocketService) {
-                    if (this@WebSocketService.webSocket === webSocket) {
-                        this@WebSocketService.webSocket = null
+                    val stream = input ?: continue
+                    val len = stream.readInt()
+                    if (len <= 0 || len > MAX_FRAME_BYTES) {
+                        throw IllegalStateException("Invalid frame length: $len")
                     }
-                }
-                connectionStatusCallback?.invoke(false)
-                if (!connectionResult.isCompleted) {
-                    connectionResult.complete(false)
+                    val jpegBytes = ByteArray(len)
+                    stream.readFully(jpegBytes)
+                    notifyFrame(jpegBytes)
+                } catch (e: Exception) {
+                    if (!shouldStayConnected) break
+                    Log.e(TAG, "TCP stream read failed: ${e.message}", e)
+                    closeInternal()
+                    notifyConnection(false)
+                    notifyMessage("STATUS:Reconnecting")
+                    delay(retryDelayMs)
+                    retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS).coerceAtMost(MAX_RETRY_DELAY_MS)
                 }
             }
+        }
+    }
+
+    private fun openSocket(): Boolean {
+        return try {
+            val newSocket = socketFactory?.createSocket() as? Socket ?: Socket()
+            newSocket.tcpNoDelay = true
+            newSocket.soTimeout = READ_TIMEOUT_MS
+            newSocket.connect(InetSocketAddress(ipAddress, PORT), CONNECT_TIMEOUT_MS)
+            socket = newSocket
+            input = DataInputStream(BufferedInputStream(newSocket.getInputStream(), BUFFER_SIZE))
+            notifyConnection(true)
+            notifyMessage("STATUS:Streaming")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "TCP connect failed: ${e.message}", e)
+            closeInternal()
+            false
+        }
+    }
+
+    private fun closeInternal() {
+        try {
+            input?.close()
+        } catch (_: Exception) {
+        }
+        try {
+            socket?.close()
+        } catch (_: Exception) {
+        }
+        input = null
+        socket = null
+    }
+
+    private fun notifyFrame(bytes: ByteArray) {
+        scope.launch {
+            frameCallback?.invoke(bytes)
+        }
+    }
+
+    private fun notifyMessage(message: String) {
+        scope.launch {
+            messageCallback?.invoke(message)
+        }
+    }
+
+    private fun notifyConnection(isConnected: Boolean) {
+        scope.launch {
+            connectionStatusCallback?.invoke(isConnected)
         }
     }
 

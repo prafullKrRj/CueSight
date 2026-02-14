@@ -30,7 +30,7 @@ val appModule = module {
     // ViewModels
     viewModel { DashboardViewModel(get(), get(), get()) }
     viewModel { StudentViewModel(get(), get()) }
-    viewModel { SessionViewModel(get(), get()) }
+    viewModel { SessionViewModel(get(), get(), get()) }
     viewModel { TeachingViewModel(get(), get(), get()) }
     viewModel { PracticeViewModel(get(), get(), get()) }
     viewModel { TestViewModel(get()) }
