@@ -100,8 +100,9 @@ class SessionViewModel(
     private var emotionLogJob: Job? = null
     private var appContext: Context? = null
 
-    // Emotion buffering to reduce command traffic
+    // Emotion buffering to reduce command traffic (synchronized for thread safety)
     private val emotionBuffer = mutableListOf<String>()
+    private val emotionBufferLock = Any()
     private var lastEmotionSentTime = 0L
     private val EMOTION_SEND_INTERVAL_MS = 2000L  // Send every 2 seconds
 
@@ -595,17 +596,26 @@ class SessionViewModel(
 
         // Buffer emotion instead of sending immediately
         if (!lowConfidence && activeMode != SessionMode.PRACTICE) {
-            emotionBuffer.add(stripEmoji(prediction.label))
+            synchronized(emotionBufferLock) {
+                emotionBuffer.add(stripEmoji(prediction.label))
+            }
             
             // Send most common emotion every 2 seconds
             val now = System.currentTimeMillis()
-            if (now - lastEmotionSentTime >= EMOTION_SEND_INTERVAL_MS && emotionBuffer.isNotEmpty()) {
-                val mostCommon = emotionBuffer.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+            if (now - lastEmotionSentTime >= EMOTION_SEND_INTERVAL_MS) {
+                val mostCommon = synchronized(emotionBufferLock) {
+                    if (emotionBuffer.isNotEmpty()) {
+                        val result = emotionBuffer.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+                        emotionBuffer.clear()
+                        result
+                    } else {
+                        null
+                    }
+                }
                 if (mostCommon != null) {
                     sendCommand("EMOTION:$mostCommon")
                     lastEmotionSentTime = now
                 }
-                emotionBuffer.clear()
             }
         } else if (activeMode == SessionMode.PRACTICE) {
             // In practice mode, still buffer but send placeholder

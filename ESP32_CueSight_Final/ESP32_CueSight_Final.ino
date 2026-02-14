@@ -285,7 +285,7 @@ bool initCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_QVGA;    // 320x240
-  config.jpeg_quality = 35;              // <<< 35 = smaller frames (~2-4KB) = faster, more reliable transfer
+  config.jpeg_quality = 35;              // <<< Quality 35 = moderate compression, ~2-4KB frames. Higher=better quality but larger, Lower=worse quality but smaller
   config.fb_count = 2;
   config.grab_mode = CAMERA_GRAB_LATEST;
 
