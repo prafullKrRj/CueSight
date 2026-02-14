@@ -293,8 +293,7 @@ class TcpFrameService {
             Log.d(TAG, "✅ Both sockets connected successfully!")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ TCP connect failed: ${e.message}", e)
-            Log.e(TAG, "❌ Stack trace: ", e)
+            Log.e(TAG, "❌ Failed to establish TCP connection: ${e.message}", e)
             closeInternal()
             false
         }
@@ -306,20 +305,22 @@ class TcpFrameService {
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
         
-        try { 
-            frameSocket?.close()
-            // Only log if we reach here without exception
-            if (frameSocket != null) Log.d(TAG, "✅ Frame socket closed")
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Frame socket close failed: ${e.message}")
+        if (frameSocket != null) {
+            try {
+                frameSocket?.close()
+                Log.d(TAG, "✅ Frame socket closed")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Frame socket close failed: ${e.message}")
+            }
         }
         
-        try { 
-            commandSocket?.close()
-            // Only log if we reach here without exception
-            if (commandSocket != null) Log.d(TAG, "✅ Command socket closed")
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Command socket close failed: ${e.message}")
+        if (commandSocket != null) {
+            try {
+                commandSocket?.close()
+                Log.d(TAG, "✅ Command socket closed")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Command socket close failed: ${e.message}")
+            }
         }
         
         input = null
