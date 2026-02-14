@@ -8,11 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
+import okhttp3.*
 import okio.ByteString
 import java.net.InetAddress
 
@@ -26,17 +22,20 @@ data class WebSocketState(
 )
 
 /**
- * Core WebSocket service for communicating with ESP32-CAM
- * Shared by all session modes (Teaching, Practice, Test)
+ * Core WebSocket service for communicating with ESP32-CAM.
+ * Manages connection, state, and messaging.
  */
 class WebSocketService {
 
     private val client = OkHttpClient()
     private var webSocket: WebSocket? = null
+
+    // Callbacks
     private var frameCallback: ((ByteArray) -> Unit)? = null
     private var messageCallback: ((String) -> Unit)? = null
     private var connectionStatusCallback: ((Boolean) -> Unit)? = null
 
+    // State management
     private val _state = MutableStateFlow(WebSocketState())
     val state: StateFlow<WebSocketState> = _state.asStateFlow()
 
@@ -56,12 +55,20 @@ class WebSocketService {
         connectionStatusCallback = callback
     }
 
+    /**
+     * Connects to the WebSocket. A new IP can be optionally provided.
+     */
     suspend fun connect(ipAddress: String = _state.value.ipAddress): Boolean {
+        // Update IP in state if overridden
+        if (ipAddress != _state.value.ipAddress) {
+            setIpAddress(ipAddress)
+        }
+
         return withContext(Dispatchers.IO) {
             try {
                 Log.d("WebSocketService", "Connecting to $ipAddress:$WEBSOCKET_PORT")
 
-                // Check if ESP32 is reachable
+                // Check availability
                 try {
                     val reachable = InetAddress.getByName(ipAddress).isReachable(3000)
                     if (!reachable) {
@@ -78,18 +85,16 @@ class WebSocketService {
 
                 val connectionResult = CompletableDeferred<Boolean>()
                 val wsUrl = "ws://$ipAddress:$WEBSOCKET_PORT"
-                val request = Request.Builder()
-                    .url(wsUrl)
-                    .build()
+                val request = Request.Builder().url(wsUrl).build()
 
                 webSocket?.close(1000, "Reconnecting")
-                webSocket = client.newWebSocket(request, createWebSocketListener(connectionResult))
+                webSocket = client.newWebSocket(request, createListener(connectionResult))
 
                 val result = withTimeoutOrNull(10_000L) {
                     connectionResult.await()
                 } ?: false
 
-                Log.d("WebSocketService", "Connection completed: $result")
+                Log.d("WebSocketService", "Connection result: $result")
                 result
             } catch (e: Exception) {
                 Log.e("WebSocketService", "Connection error: ${e.message}", e)
@@ -99,7 +104,7 @@ class WebSocketService {
         }
     }
 
-    private fun createWebSocketListener(connectionResult: CompletableDeferred<Boolean>): WebSocketListener {
+    private fun createListener(connectionResult: CompletableDeferred<Boolean>): WebSocketListener {
         return object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d("WebSocketService", "WebSocket OPENED")
@@ -123,40 +128,45 @@ class WebSocketService {
                     isConnected = false,
                     error = t.message ?: "Connection failed"
                 )
+                connectionStatusCallback?.invoke(false)
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
                 }
-                connectionStatusCallback?.invoke(false)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d("WebSocketService", "WebSocket CLOSED - Code: $code, Reason: $reason")
                 _state.value = _state.value.copy(isConnected = false)
+                connectionStatusCallback?.invoke(false)
                 if (!connectionResult.isCompleted) {
                     connectionResult.complete(false)
                 }
-                connectionStatusCallback?.invoke(false)
             }
         }
     }
 
     fun sendCommand(command: String): Boolean {
-        val socket = webSocket ?: return false
+        val socket = webSocket
+        if (socket == null) {
+            Log.w("WebSocketService", "Cannot send command, socket is null")
+            return false
+        }
         val result = socket.send(command)
-        if (!result) {
-            Log.w("WebSocketService", "Failed to send: $command")
-        } else {
+        if (result) {
             Log.d("WebSocketService", "Sent: $command")
+        } else {
+            Log.w("WebSocketService", "Failed to send: $command")
         }
         return result
     }
 
     fun disconnect() {
-        webSocket?.close(1000, "Disconnected")
+        webSocket?.close(1000, "Client disconnect")
         webSocket = null
         _state.value = _state.value.copy(isConnected = false)
+        connectionStatusCallback?.invoke(false)
+        Log.d("WebSocketService", "Disconnected")
     }
 
     fun isConnected(): Boolean = _state.value.isConnected
 }
-
