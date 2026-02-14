@@ -87,12 +87,17 @@ class TcpFrameService {
             connectionMutex.withLock {
                 try {
                     if (ipAddress.isBlank() || !isValidIpv4(ipAddress)) {
-                        Log.e(TAG, "Cannot connect: invalid IP address")
+                        Log.e(TAG, "❌ Cannot connect: invalid IP address")
                         return@withLock false
                     }
 
                     Log.d(TAG, "🔌 Connecting to $ipAddress (Frame:$FRAME_PORT, Command:$COMMAND_PORT)")
                     Log.d(TAG, "🔌 Socket factory bound: ${socketFactory != null}")
+                    
+                    if (socketFactory == null) {
+                        Log.w(TAG, "⚠️ WARNING: No socket factory! Network binding may not have been called.")
+                        Log.w(TAG, "⚠️ Connection may fail if device has mobile data enabled.")
+                    }
 
                     notifyMessage(STATUS_CONNECTING)
 
@@ -108,6 +113,7 @@ class TcpFrameService {
                     val connected = openSockets()
                     if (!connected) {
                         shouldStayConnected = false
+                        Log.e(TAG, "❌ Failed to open sockets")
                         return@withLock false
                     }
 
@@ -115,9 +121,10 @@ class TcpFrameService {
                     delay(200)
 
                     startReaderLoop()
+                    Log.d(TAG, "✅ Connection complete, reader loop started")
                     true
                 } catch (e: Exception) {
-                    Log.e(TAG, "Connection error: ${e.message}", e)
+                    Log.e(TAG, "❌ Connection error: ${e.message}", e)
                     false
                 }
             }
@@ -145,12 +152,13 @@ class TcpFrameService {
     }
 
     fun disconnect() {
+        Log.d(TAG, "🔌 Disconnecting...")
         shouldStayConnected = false
         readerJob?.cancel()
         readerJob = null
         closeInternal()
         notifyConnection(false)
-        Log.d(TAG, "Disconnected")
+        Log.d(TAG, "✅ Disconnected")
     }
 
     private fun startReaderLoop() {
@@ -285,10 +293,17 @@ class TcpFrameService {
     }
 
     private fun closeInternal() {
+        Log.d(TAG, "🔌 Closing sockets...")
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
-        try { frameSocket?.close() } catch (_: Exception) {}
-        try { commandSocket?.close() } catch (_: Exception) {}
+        try { 
+            frameSocket?.close()
+            Log.d(TAG, "✅ Frame socket closed")
+        } catch (_: Exception) {}
+        try { 
+            commandSocket?.close()
+            Log.d(TAG, "✅ Command socket closed")
+        } catch (_: Exception) {}
         input = null
         output = null
         frameSocket = null
