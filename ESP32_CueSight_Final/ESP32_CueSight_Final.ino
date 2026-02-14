@@ -54,7 +54,8 @@
 const char* ssid = "ESP32-CAM";
 const char* password = "12345678";
 
-#define TCP_PORT 81
+#define FRAME_PORT 81
+#define COMMAND_PORT 82
 #define MAX_COMMAND_LENGTH 128
 
 // ============================================================================
@@ -67,8 +68,10 @@ const char* password = "12345678";
 // GLOBALS
 // ============================================================================
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-WiFiServer tcpServer(TCP_PORT);
-WiFiClient connectedClient;
+WiFiServer frameServer(FRAME_PORT);
+WiFiServer commandServer(COMMAND_PORT);
+WiFiClient frameClient;
+WiFiClient commandClient;
 
 enum SessionMode {
   MODE_IDLE,
@@ -91,6 +94,11 @@ bool wifiWasDisconnected = false;
 
 char displayBuffer[64];
 String commandBuffer = "";
+
+// OLED update throttling
+String pendingEmotion = "";
+unsigned long lastOLEDUpdate = 0;
+#define OLED_UPDATE_INTERVAL_MS 2000
 
 // ============================================================================
 // FAST OLED UPDATE
@@ -176,8 +184,8 @@ void handleCommand(String message) {
       streamingActive = true;
       frameCount = 0;
       lastFPSCheck = millis();
-      lastFrameTime = millis() + 500; // send first frame immediately
-      Serial.println("[TCP] Streaming started");
+      lastFrameTime = millis() + 300;  // 300ms warmup before first frame
+      Serial.println("[TCP] Streaming started (300ms warmup)");
     }
   } else if (message == "STREAM:STOP") {
     streamingActive = false;
@@ -186,17 +194,16 @@ void handleCommand(String message) {
     String emotion = message.substring(8);
     emotion.trim();
     if (emotion == "HIDDEN" || emotion == "?") {
-      currentEmotion = "?";
-      showEmotionDisplay("?");
+      pendingEmotion = "?";
     } else {
-      currentEmotion = emotion;
-      currentEmotion.replace("😊", "");
-      currentEmotion.replace("😢", "");
-      currentEmotion.replace("😴", "");
-      currentEmotion.replace("😐", "");
-      currentEmotion.trim();
-      showEmotionDisplay(currentEmotion);
+      emotion.replace("😊", "");
+      emotion.replace("😢", "");
+      emotion.replace("😴", "");
+      emotion.replace("😐", "");
+      emotion.trim();
+      pendingEmotion = emotion;
     }
+    // Note: OLED update deferred to main loop to avoid I2C blocking during frame sends
   } else if (message.startsWith("FEEDBACK:")) {
     String feedback = message.substring(9);
     feedback.trim();
@@ -217,22 +224,34 @@ void handleCommand(String message) {
 }
 
 // ============================================================================
-// >>> RELIABLE CHUNKED WRITE — THIS WAS MISSING <<<
-// Sends data in chunks, retries partial writes. Returns true if all sent.
+// >>> SAFE SEND — Chunked write with retry logic <<<
+// Sends data in 512-byte chunks with retries and 3-second timeout
 // ============================================================================
-bool sendAll(WiFiClient& client, const uint8_t* data, size_t len) {
+bool safeSend(WiFiClient& client, const uint8_t* data, size_t len) {
+  if (!client.connected()) return false;
+  
   size_t sent = 0;
   unsigned long startMs = millis();
+  
   while (sent < len) {
-    if (!client.connected()) return false;
-    if (millis() - startMs > 3000) return false;  // 3 second timeout
+    if (!client.connected()) {
+      Serial.printf("[TCP] Client disconnected during send (sent %u/%u)\n", sent, len);
+      return false;
+    }
+    
+    if (millis() - startMs > 3000) {
+      Serial.printf("[TCP] Send timeout after %u/%u bytes\n", sent, len);
+      return false;
+    }
 
-    size_t chunk = min(len - sent, (size_t)1024);  // send in 1KB chunks
+    size_t chunk = min(len - sent, (size_t)512);  // send in 512-byte chunks
     size_t written = client.write(data + sent, chunk);
+    
     if (written > 0) {
       sent += written;
     } else {
-      delay(1);  // brief yield if write buffer full
+      // Write buffer full, brief yield and retry
+      delay(1);
     }
   }
   return true;
@@ -266,7 +285,7 @@ bool initCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_QVGA;    // 320x240
-  config.jpeg_quality = 15;              // <<< slightly higher number = smaller frames = faster transfer
+  config.jpeg_quality = 35;              // <<< 35 = smaller frames (~2-4KB) = faster, more reliable transfer
   config.fb_count = 2;
   config.grab_mode = CAMERA_GRAB_LATEST;
 
@@ -376,16 +395,21 @@ void setup() {
     while (1) { digitalWrite(LED_PIN, HIGH); delay(500); digitalWrite(LED_PIN, LOW); delay(500); }
   }
 
-  tcpServer.begin();
-  tcpServer.setNoDelay(true);
-  Serial.printf("[TCP] Server started on port %d\n", TCP_PORT);
+  frameServer.begin();
+  frameServer.setNoDelay(true);
+  commandServer.begin();
+  commandServer.setNoDelay(true);
+  Serial.printf("[TCP] Frame server started on port %d\n", FRAME_PORT);
+  Serial.printf("[TCP] Command server started on port %d\n", COMMAND_PORT);
 
   lastFPSCheck = millis();
   lastReconnectAttempt = millis();
+  lastOLEDUpdate = millis();
 
   Serial.println("\n========================================");
   Serial.println("System Ready");
-  Serial.printf("TCP: %s:%d\n", WiFi.softAPIP().toString().c_str(), TCP_PORT);
+  Serial.printf("Frame streaming: %s:%d\n", WiFi.softAPIP().toString().c_str(), FRAME_PORT);
+  Serial.printf("Commands: %s:%d\n", WiFi.softAPIP().toString().c_str(), COMMAND_PORT);
   Serial.printf("Target FPS: %d\n", TARGET_FPS);
   Serial.println("========================================\n");
   Serial.printf("[MEM] Free heap: %u bytes\n", esp_get_free_heap_size());
@@ -402,7 +426,7 @@ void setup() {
 }
 
 // ============================================================================
-// MAIN LOOP — FIXED
+// MAIN LOOP — TWO-PORT ARCHITECTURE
 // ============================================================================
 void loop() {
   if (wifiWasDisconnected) {
@@ -410,34 +434,54 @@ void loop() {
     fastOLEDUpdate("WiFi OK", "Waiting...", 1);
   }
 
-  // Accept or replace active TCP client
-  WiFiClient incomingClient = tcpServer.available();
-  if (incomingClient) {
-    if (connectedClient && connectedClient.connected()) {
-      connectedClient.stop();
+  // ===== ACCEPT FRAME CLIENT (port 81) =====
+  WiFiClient incomingFrameClient = frameServer.available();
+  if (incomingFrameClient) {
+    if (frameClient && frameClient.connected()) {
+      frameClient.stop();
+    }
+    frameClient = incomingFrameClient;
+    frameClient.setNoDelay(true);
+    frameClient.setTimeout(3);  // 3 second write timeout
+    Serial.printf("[TCP] Frame client connected from %s\n",
+                  frameClient.remoteIP().toString().c_str());
+  }
+
+  if (frameClient && !frameClient.connected()) {
+    Serial.println("[TCP] Frame client disconnected");
+    frameClient.stop();
+    streamingActive = false;
+  }
+
+  // ===== ACCEPT COMMAND CLIENT (port 82) =====
+  WiFiClient incomingCmdClient = commandServer.available();
+  if (incomingCmdClient) {
+    if (commandClient && commandClient.connected()) {
+      commandClient.stop();
     }
     commandBuffer = "";
-    streamingActive = false;
-    connectedClient = incomingClient;
-    connectedClient.setNoDelay(true);
-    connectedClient.setTimeout(5);  // <<< NEW: 5 second write timeout
-    Serial.printf("[TCP] Client connected from %s\n",
-                  connectedClient.remoteIP().toString().c_str());
+    commandClient = incomingCmdClient;
+    commandClient.setNoDelay(true);
+    commandClient.setTimeout(3);  // 3 second read timeout
+    Serial.printf("[TCP] Command client connected from %s\n",
+                  commandClient.remoteIP().toString().c_str());
   }
 
-  if (connectedClient && !connectedClient.connected()) {
-    Serial.println("[TCP] Client disconnected");
-    connectedClient.stop();
+  if (commandClient && !commandClient.connected()) {
+    Serial.println("[TCP] Command client disconnected");
+    commandClient.stop();
     commandBuffer = "";
-    streamingActive = false;
   }
 
-  // Process line-delimited commands from Android
-  while (connectedClient && connectedClient.connected() && connectedClient.available()) {
-    char c = (char)connectedClient.read();
+  // ===== PROCESS LINE-DELIMITED COMMANDS (port 82) =====
+  // Limit to 3 commands per loop iteration to prevent command flood
+  int commandsProcessed = 0;
+  while (commandClient && commandClient.connected() && commandClient.available() && commandsProcessed < 3) {
+    char c = (char)commandClient.read();
     if (c == '\n') {
       handleCommand(commandBuffer);
       commandBuffer = "";
+      commandsProcessed++;
     } else if (c != '\r') {
       commandBuffer += c;
       if (commandBuffer.length() > MAX_COMMAND_LENGTH) {
@@ -447,12 +491,18 @@ void loop() {
     }
   }
 
-  // ================================================================
-  // TCP RAW streaming — FIXED with throttle + chunked write
-  // ================================================================
-  if (streamingActive && connectedClient && connectedClient.connected()) {
+  // ===== DEFERRED OLED UPDATE (max once every 2 seconds) =====
+  if (pendingEmotion.length() > 0 && (millis() - lastOLEDUpdate) > OLED_UPDATE_INTERVAL_MS) {
+    currentEmotion = pendingEmotion;
+    showEmotionDisplay(currentEmotion);
+    pendingEmotion = "";
+    lastOLEDUpdate = millis();
+  }
 
-    // >>> FIX 1: THROTTLE TO TARGET FPS <<<
+  // ===== TCP RAW FRAME STREAMING (port 81) =====
+  if (streamingActive && frameClient && frameClient.connected()) {
+
+    // FPS throttle: send one frame every 125ms (8 FPS)
     unsigned long now = millis();
     if (now - lastFrameTime < FRAME_INTERVAL_MS) {
       delay(1);  // yield CPU instead of busy-looping
@@ -476,17 +526,17 @@ void loop() {
       (uint8_t)(frameLen & 0xFF)
     };
 
-    // >>> FIX 2: USE CHUNKED RELIABLE WRITE INSTEAD OF INSTANT DISCONNECT <<<
-    bool ok = sendAll(connectedClient, header, 4);
+    // Use safeSend() for chunked reliable write
+    bool ok = safeSend(frameClient, header, 4);
     if (ok) {
-      ok = sendAll(connectedClient, fb->buf, fb->len);
+      ok = safeSend(frameClient, fb->buf, fb->len);
     }
 
     esp_camera_fb_return(fb);
 
     if (!ok) {
-      Serial.println("[TCP] Write failed, disconnecting client");
-      connectedClient.stop();
+      Serial.println("[TCP] Write failed, disconnecting frame client");
+      frameClient.stop();
       streamingActive = false;
       return;
     }
@@ -508,8 +558,8 @@ void loop() {
         lowMemoryLock = true;
         streamingActive = false;
         Serial.printf("LOW MEMORY: %u bytes\n", freeHeap);
-        if (connectedClient && connectedClient.connected()) {
-          connectedClient.stop();
+        if (frameClient && frameClient.connected()) {
+          frameClient.stop();
         }
         fastOLEDUpdate("Low Memory", "Restart ESP32", 1);
       }

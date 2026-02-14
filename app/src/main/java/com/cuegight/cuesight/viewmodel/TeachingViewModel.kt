@@ -107,6 +107,11 @@ class TeachingViewModel(
     private var lastEmotionSent: String = ""
     private var appContext: Context? = null
 
+    // Emotion buffering to reduce command traffic
+    private val emotionBuffer = mutableListOf<String>()
+    private var lastEmotionSentTime = 0L
+    private val EMOTION_SEND_INTERVAL_MS = 2000L  // Send every 2 seconds
+
     init {
         initFaceDetector()
         setupWebSocketCallbacks()
@@ -472,31 +477,40 @@ class TeachingViewModel(
             predictionDetail = ""
         )
 
-        // Send to ESP32 OLED only if emotion changed
-        if (emotion != lastEmotionSent) {
-            webSocketService.sendCommand("EMOTION:$emotion")
-            lastEmotionSent = emotion
+        // Buffer emotion instead of sending immediately
+        emotionBuffer.add(emotion)
+        
+        // Send most common emotion every 2 seconds
+        val now = System.currentTimeMillis()
+        if (now - lastEmotionSentTime >= EMOTION_SEND_INTERVAL_MS && emotionBuffer.isNotEmpty()) {
+            val mostCommon = emotionBuffer.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+            if (mostCommon != null && mostCommon != lastEmotionSent) {
+                webSocketService.sendCommand("EMOTION:$mostCommon")
+                lastEmotionSent = mostCommon
+                lastEmotionSentTime = now
 
-            // Log to database
-            viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    _state.value.currentSession?.let { session ->
-                        emotionLogRepository.insertEmotion(
-                            EmotionLog(
-                                sessionId = session.id,
-                                emotion = emotion,
-                                confidence = confidence,
-                                frameQuality = FrameQuality.OK,
-                                smilingProbability = smilingProbability,
-                                leftEyeOpenProbability = leftEyeOpenProbability,
-                                rightEyeOpenProbability = rightEyeOpenProbability
+                // Log to database
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        _state.value.currentSession?.let { session ->
+                            emotionLogRepository.insertEmotion(
+                                EmotionLog(
+                                    sessionId = session.id,
+                                    emotion = mostCommon,
+                                    confidence = confidence,
+                                    frameQuality = FrameQuality.OK,
+                                    smilingProbability = smilingProbability,
+                                    leftEyeOpenProbability = leftEyeOpenProbability,
+                                    rightEyeOpenProbability = rightEyeOpenProbability
+                                )
                             )
-                        )
+                        }
+                    } catch (e: Exception) {
+                        Log.e("TeachingViewModel", "Failed to log emotion: ${e.message}", e)
                     }
-                } catch (e: Exception) {
-                    Log.e("TeachingViewModel", "Failed to log emotion: ${e.message}", e)
                 }
             }
+            emotionBuffer.clear()
         }
     }
 

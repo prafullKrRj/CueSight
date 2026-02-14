@@ -47,6 +47,11 @@ class TestViewModel(
     private var isDetecting = false
     private var appContext: Context? = null
 
+    // Emotion buffering to reduce command traffic
+    private val emotionBuffer = mutableListOf<String>()
+    private var lastEmotionSentTime = 0L
+    private val EMOTION_SEND_INTERVAL_MS = 2000L  // Send every 2 seconds
+
     private val _state = MutableStateFlow(TestState())
     val state: StateFlow<TestState> = _state.asStateFlow()
 
@@ -193,8 +198,20 @@ class TestViewModel(
             predictionDetail = if (lowConfidence) "Confidence ${(prediction.confidence * 100).toInt()}%" else ""
         )
 
+        // Buffer emotion instead of sending immediately
         if (!lowConfidence) {
-            webSocketService.sendCommand("EMOTION:${stripEmoji(prediction.label)}")
+            emotionBuffer.add(stripEmoji(prediction.label))
+            
+            // Send most common emotion every 2 seconds
+            val now = System.currentTimeMillis()
+            if (now - lastEmotionSentTime >= EMOTION_SEND_INTERVAL_MS && emotionBuffer.isNotEmpty()) {
+                val mostCommon = emotionBuffer.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+                if (mostCommon != null) {
+                    webSocketService.sendCommand("EMOTION:$mostCommon")
+                    lastEmotionSentTime = now
+                }
+                emotionBuffer.clear()
+            }
         }
     }
 
