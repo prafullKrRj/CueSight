@@ -30,6 +30,15 @@ import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.viewmodel.TeachingViewModel
 import org.koin.androidx.compose.koinViewModel
 
+// Emotion color constants for consistent theming
+private object EmotionColors {
+    val Happy = Color(0xFFFDD835)      // Yellow - cheerful and bright
+    val Sad = Color(0xFF42A5F5)        // Blue - calm and melancholy
+    val Angry = Color(0xFFEF5350)      // Red - intense and attention-grabbing
+    val Surprised = Color(0xFF66BB6A)  // Green - unexpected and fresh
+    val Neutral = Color(0xFF9E9E9E)    // Gray - balanced and neutral
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TeachingSessionScreen(
@@ -896,11 +905,11 @@ private fun getEmotionEmoji(emotion: String): String {
 @Composable
 private fun getEmotionColor(emotion: String): Color {
     return when (emotion) {
-        "Happy" -> Color(0xFFFDD835)  // Yellow
-        "Sad" -> Color(0xFF42A5F5)    // Blue
-        "Angry" -> Color(0xFFEF5350)  // Red
-        "Surprised" -> Color(0xFF66BB6A) // Green
-        "Neutral" -> Color(0xFF9E9E9E) // Gray
+        "Happy" -> EmotionColors.Happy
+        "Sad" -> EmotionColors.Sad
+        "Angry" -> EmotionColors.Angry
+        "Surprised" -> EmotionColors.Surprised
+        "Neutral" -> EmotionColors.Neutral
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
 }

@@ -78,6 +78,20 @@ class TeachingViewModel(
     private val webSocketService: WebSocketService
 ) : ViewModel() {
 
+    companion object {
+        // Emotion classification thresholds based on ML Kit face probabilities
+        // These values are derived from empirical observation of typical facial expressions
+        // and can be tuned for improved accuracy
+        private const val HAPPY_SMILE_THRESHOLD = 0.7f      // High smile probability indicates happiness
+        private const val SAD_SMILE_THRESHOLD = 0.3f        // Low smile + drooping eye indicates sadness
+        private const val SAD_EYE_THRESHOLD = 0.5f
+        private const val ANGRY_SMILE_THRESHOLD = 0.2f      // Very low smile + wide eyes indicates anger
+        private const val ANGRY_EYE_THRESHOLD = 0.7f
+        private const val SURPRISED_EYE_THRESHOLD = 0.8f    // Very wide eyes + moderate smile indicates surprise
+        private const val SURPRISED_SMILE_MIN = 0.3f
+        private const val SURPRISED_SMILE_MAX = 0.6f
+    }
+
     private val _state = MutableStateFlow(TeachingState())
     val state: StateFlow<TeachingState> = _state.asStateFlow()
 
@@ -473,7 +487,7 @@ class TeachingViewModel(
 
     /**
      * Classifies emotion using ML Kit face probabilities (heuristic approach).
-     * Thresholds are based on empirical observation of typical facial expressions.
+     * Uses threshold constants from companion object.
      * Future enhancement: Replace with TensorFlow Lite emotion model for improved accuracy.
      */
     private fun classifyEmotion(
@@ -481,16 +495,6 @@ class TeachingViewModel(
         leftEye: Float,
         rightEye: Float
     ): Pair<String, Float> {
-        // Emotion classification thresholds
-        val HAPPY_SMILE_THRESHOLD = 0.7f      // High smile probability indicates happiness
-        val SAD_SMILE_THRESHOLD = 0.3f        // Low smile + drooping eye indicates sadness
-        val SAD_EYE_THRESHOLD = 0.5f
-        val ANGRY_SMILE_THRESHOLD = 0.2f      // Very low smile + wide eyes indicates anger
-        val ANGRY_EYE_THRESHOLD = 0.7f
-        val SURPRISED_EYE_THRESHOLD = 0.8f    // Very wide eyes + moderate smile indicates surprise
-        val SURPRISED_SMILE_MIN = 0.3f
-        val SURPRISED_SMILE_MAX = 0.6f
-
         return when {
             smiling > HAPPY_SMILE_THRESHOLD -> "Happy" to smiling
             smiling < SAD_SMILE_THRESHOLD && leftEye < SAD_EYE_THRESHOLD -> "Sad" to (1f - smiling)
