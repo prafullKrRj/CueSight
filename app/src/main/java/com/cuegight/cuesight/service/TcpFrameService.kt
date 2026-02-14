@@ -302,22 +302,25 @@ class TcpFrameService {
 
     private fun closeInternal() {
         Log.d(TAG, "🔌 Closing sockets...")
-        var frameSocketClosed = false
-        var commandSocketClosed = false
         
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
+        
         try { 
             frameSocket?.close()
-            frameSocketClosed = true
-        } catch (_: Exception) {}
+            // Only log if we reach here without exception
+            if (frameSocket != null) Log.d(TAG, "✅ Frame socket closed")
+        } catch (e: Exception) {
+            Log.w(TAG, "⚠️ Frame socket close failed: ${e.message}")
+        }
+        
         try { 
             commandSocket?.close()
-            commandSocketClosed = true
-        } catch (_: Exception) {}
-        
-        if (frameSocketClosed) Log.d(TAG, "✅ Frame socket closed")
-        if (commandSocketClosed) Log.d(TAG, "✅ Command socket closed")
+            // Only log if we reach here without exception
+            if (commandSocket != null) Log.d(TAG, "✅ Command socket closed")
+        } catch (e: Exception) {
+            Log.w(TAG, "⚠️ Command socket close failed: ${e.message}")
+        }
         
         input = null
         output = null
