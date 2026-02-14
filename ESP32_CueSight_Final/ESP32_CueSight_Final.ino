@@ -1,18 +1,6 @@
 /*
  * ============================================================================
- * CueSight ESP32-CAM - Optimized JPEG Streaming via OV2640
- * ============================================================================
- *
- * Features:
- * - JPEG 320x240 @ 15-20 FPS via OV2640 HW encoder (optimized for speed)
- * - Raw TCP binary streaming (JPEG frames with 4-byte length prefix)
- * - OLED display for status
- * - LED control with emotion feedback
- * - Session mode support (Teaching/Practice/Idle)
- * - Auto WiFi reconnection
- * - Fixed IP: 192.168.4.1 (AP mode)
- *
- * Camera Config: Optimized OV2640 settings (HW JPEG encoder)
+ * CueSight ESP32-CAM - FIXED Streaming
  * ============================================================================
  */
 
@@ -28,7 +16,6 @@
 // ============================================================================
 #define CAMERA_MODEL_AI_THINKER
 
-// AI-Thinker ESP32-CAM pin mapping (hardcoded)
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
@@ -64,11 +51,17 @@
 // ============================================================================
 // NETWORK CONFIGURATION
 // ============================================================================
-const char* ssid = "ESP32-CAM";       // ESP32 AP SSID
-const char* password = "12345678";   // TODO: Change this
+const char* ssid = "ESP32-CAM";
+const char* password = "12345678";
 
 #define TCP_PORT 81
 #define MAX_COMMAND_LENGTH 128
+
+// ============================================================================
+// >>>  FPS THROTTLE — THIS WAS MISSING  <<<
+// ============================================================================
+#define TARGET_FPS 8
+#define FRAME_INTERVAL_MS (1000 / TARGET_FPS)  // 125ms
 
 // ============================================================================
 // GLOBALS
@@ -77,7 +70,6 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 WiFiServer tcpServer(TCP_PORT);
 WiFiClient connectedClient;
 
-// State variables
 enum SessionMode {
   MODE_IDLE,
   MODE_TEACHING,
@@ -89,16 +81,14 @@ SessionMode currentMode = MODE_IDLE;
 bool streamingActive = false;
 bool lowMemoryLock = false;
 
-// Performance metrics
 uint32_t frameCount = 0;
 uint32_t lastFPSCheck = 0;
 float currentFPS = 0.0;
+unsigned long lastFrameTime = 0;   // <<< NEW: for FPS throttle
 
-// Network monitoring
 uint32_t lastReconnectAttempt = 0;
 bool wifiWasDisconnected = false;
 
-// Display buffer
 char displayBuffer[64];
 String commandBuffer = "";
 
@@ -110,24 +100,19 @@ void fastOLEDUpdate(const char* line1, const char* line2, uint8_t textSize) {
   display.setTextSize(textSize);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-
   if (line1) display.println(line1);
   if (line2) {
     display.setCursor(0, textSize == 1 ? 10 : 20);
     display.println(line2);
   }
-
   display.display();
 }
 
 const char* modeLabel() {
   switch (currentMode) {
-    case MODE_TEACHING:
-      return "TEACH";
-    case MODE_PRACTICE:
-      return "PRACTICE";
-    default:
-      return "IDLE";
+    case MODE_TEACHING:  return "TEACH";
+    case MODE_PRACTICE:  return "PRACTICE";
+    default:             return "IDLE";
   }
 }
 
@@ -164,13 +149,11 @@ void showFeedbackDisplay(const String& feedbackText) {
 }
 
 // ============================================================================
-// TCP COMMAND HANDLER
+// TCP COMMAND HANDLER (unchanged)
 // ============================================================================
 void handleCommand(String message) {
   message.trim();
-  if (message.length() == 0) {
-    return;
-  }
+  if (message.length() == 0) return;
 
   Serial.printf("[TCP] Received command: %s\n", message.c_str());
 
@@ -191,6 +174,9 @@ void handleCommand(String message) {
   } else if (message == "STREAM:START") {
     if (!lowMemoryLock) {
       streamingActive = true;
+      frameCount = 0;
+      lastFPSCheck = millis();
+      lastFrameTime = millis() + 500; // send first frame immediately
       Serial.println("[TCP] Streaming started");
     }
   } else if (message == "STREAM:STOP") {
@@ -230,14 +216,34 @@ void handleCommand(String message) {
   }
 }
 
+// ============================================================================
+// >>> RELIABLE CHUNKED WRITE — THIS WAS MISSING <<<
+// Sends data in chunks, retries partial writes. Returns true if all sent.
+// ============================================================================
+bool sendAll(WiFiClient& client, const uint8_t* data, size_t len) {
+  size_t sent = 0;
+  unsigned long startMs = millis();
+  while (sent < len) {
+    if (!client.connected()) return false;
+    if (millis() - startMs > 3000) return false;  // 3 second timeout
+
+    size_t chunk = min(len - sent, (size_t)1024);  // send in 1KB chunks
+    size_t written = client.write(data + sent, chunk);
+    if (written > 0) {
+      sent += written;
+    } else {
+      delay(1);  // brief yield if write buffer full
+    }
+  }
+  return true;
+}
 
 // ============================================================================
-// CAMERA INITIALIZATION - JPEG OPTIMIZED for OV2640
+// CAMERA INITIALIZATION
 // ============================================================================
 bool initCamera() {
   camera_config_t config;
 
-  // Pin configuration
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
   config.pin_d0 = Y2_GPIO_NUM;
@@ -257,14 +263,12 @@ bool initCamera() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
 
-  // ======== JPEG OPTIMIZED for OV2640 HW encoder ========
-  config.xclk_freq_hz = 20000000;              // 20MHz XCLK
-  config.pixel_format = PIXFORMAT_JPEG;        // OV2640 HW JPEG (zero CPU cost)
-  config.frame_size = FRAMESIZE_QVGA;          // 320x240 (better for ML face detection)
-  config.jpeg_quality = 12;                    // Quality 12 (~10-15KB/frame)
-  config.fb_count = 2;                         // Double buffer
-  config.grab_mode = CAMERA_GRAB_LATEST;       // Skip old frames
-  // =========================================
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+  config.frame_size = FRAMESIZE_QVGA;    // 320x240
+  config.jpeg_quality = 15;              // <<< slightly higher number = smaller frames = faster transfer
+  config.fb_count = 2;
+  config.grab_mode = CAMERA_GRAB_LATEST;
 
   if (psramFound()) {
     config.fb_location = CAMERA_FB_IN_PSRAM;
@@ -285,8 +289,6 @@ bool initCamera() {
 
   sensor_t *s = esp_camera_sensor_get();
   s->set_framesize(s, FRAMESIZE_QVGA);
-
-  // Optimize OV2640 sensor for speed
   s->set_brightness(s, 1);
   s->set_contrast(s, 0);
   s->set_exposure_ctrl(s, 1);
@@ -297,11 +299,7 @@ bool initCamera() {
   s->set_special_effect(s, 0);
   s->set_lenc(s, 1);
 
-  Serial.println("[CAM] Initialized: JPEG at QVGA (320x240) via OV2640 HW encoder");
-  Serial.println("[CAM] Mode: Hardware JPEG - zero CPU encoding overhead!");
-  Serial.println("[CAM] Expected FPS: 15-20 (limited by WiFi bandwidth)");
-  Serial.println("[CAM] Frame size: ~10-15 KB (JPEG compressed)");
-
+  Serial.println("[CAM] Initialized: JPEG at QVGA (320x240)");
   return true;
 }
 
@@ -319,12 +317,9 @@ bool connectWiFi() {
 
   WiFi.mode(WIFI_AP);
   WiFi.setSleep(false);
-
   fastOLEDUpdate("Creating AP...", ssid, 1);
 
-  // Create Access Point
   bool success = WiFi.softAP(ssid, password);
-
   if (!success) {
     Serial.println("\n[WiFi] AP creation FAILED!");
     fastOLEDUpdate("WiFi FAIL", "AP Error", 1);
@@ -332,14 +327,12 @@ bool connectWiFi() {
   }
 
   IPAddress IP = WiFi.softAPIP();
-  Serial.printf("\n[WiFi] Access Point created: %s\n", ssid);
-  Serial.printf("[WiFi] AP IP address: %s\n", IP.toString().c_str());
-  Serial.printf("[WiFi] Connect to this AP with password: %s\n", password);
+  Serial.printf("\n[WiFi] AP created: %s\n", ssid);
+  Serial.printf("[WiFi] IP: %s\n", IP.toString().c_str());
 
   snprintf(displayBuffer, sizeof(displayBuffer), "IP:%s", IP.toString().c_str());
   fastOLEDUpdate(displayBuffer, "AP Ready", 1);
   delay(2000);
-
   return true;
 }
 
@@ -349,15 +342,12 @@ bool connectWiFi() {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("🚀 CueSight ESP32-CAM");
-  Serial.println("   JPEG via OV2640 HW Encoder");
+  Serial.println("CueSight ESP32-CAM (FIXED)");
   Serial.println("========================================\n");
 
-  // LED setup
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // OLED setup
   Wire.begin(I2C_SDA, I2C_SCL);
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
     Serial.println("[OLED] Init failed");
@@ -374,49 +364,32 @@ void setup() {
     display.display();
   }
 
-  // Camera init
   Serial.println("[CAM] Initializing...");
   if (!initCamera()) {
     Serial.println("[CAM] FATAL ERROR");
-    while (1) {
-      digitalWrite(LED_PIN, HIGH);
-      delay(100);
-      digitalWrite(LED_PIN, LOW);
-      delay(100);
-    }
+    while (1) { digitalWrite(LED_PIN, HIGH); delay(100); digitalWrite(LED_PIN, LOW); delay(100); }
   }
 
-  // WiFi connection
   Serial.println("[WiFi] Connecting...");
   if (!connectWiFi()) {
     Serial.println("[WiFi] FATAL ERROR");
-    while (1) {
-      digitalWrite(LED_PIN, HIGH);
-      delay(500);
-      digitalWrite(LED_PIN, LOW);
-      delay(500);
-    }
+    while (1) { digitalWrite(LED_PIN, HIGH); delay(500); digitalWrite(LED_PIN, LOW); delay(500); }
   }
 
-
-  // TCP server
   tcpServer.begin();
   tcpServer.setNoDelay(true);
   Serial.printf("[TCP] Server started on port %d\n", TCP_PORT);
 
-  // Init timing
   lastFPSCheck = millis();
   lastReconnectAttempt = millis();
 
   Serial.println("\n========================================");
-  Serial.println("✅ System Ready");
-  Serial.printf("🔌 TCP: %s:%d\n", WiFi.softAPIP().toString().c_str(), TCP_PORT);
-  Serial.println("📷 Camera: JPEG 320x240 via OV2640 HW encoder");
+  Serial.println("System Ready");
+  Serial.printf("TCP: %s:%d\n", WiFi.softAPIP().toString().c_str(), TCP_PORT);
+  Serial.printf("Target FPS: %d\n", TARGET_FPS);
   Serial.println("========================================\n");
-
   Serial.printf("[MEM] Free heap: %u bytes\n", esp_get_free_heap_size());
 
-  // Final display update
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(0, 0);
@@ -429,12 +402,9 @@ void setup() {
 }
 
 // ============================================================================
-// MAIN LOOP
+// MAIN LOOP — FIXED
 // ============================================================================
 void loop() {
-  // AP mode doesn't need reconnection logic - remove WiFi reconnection check
-  // Keep the rest of the loop as-is
-
   if (wifiWasDisconnected) {
     wifiWasDisconnected = false;
     fastOLEDUpdate("WiFi OK", "Waiting...", 1);
@@ -450,7 +420,9 @@ void loop() {
     streamingActive = false;
     connectedClient = incomingClient;
     connectedClient.setNoDelay(true);
-    Serial.printf("[TCP] Client connected from %s\n", connectedClient.remoteIP().toString().c_str());
+    connectedClient.setTimeout(5);  // <<< NEW: 5 second write timeout
+    Serial.printf("[TCP] Client connected from %s\n",
+                  connectedClient.remoteIP().toString().c_str());
   }
 
   if (connectedClient && !connectedClient.connected()) {
@@ -475,10 +447,20 @@ void loop() {
     }
   }
 
-  // TCP RAW streaming (if active)
+  // ================================================================
+  // TCP RAW streaming — FIXED with throttle + chunked write
+  // ================================================================
   if (streamingActive && connectedClient && connectedClient.connected()) {
-    camera_fb_t* fb = esp_camera_fb_get();
 
+    // >>> FIX 1: THROTTLE TO TARGET FPS <<<
+    unsigned long now = millis();
+    if (now - lastFrameTime < FRAME_INTERVAL_MS) {
+      delay(1);  // yield CPU instead of busy-looping
+      return;
+    }
+    lastFrameTime = now;
+
+    camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) {
       Serial.println("[CAM] Capture failed");
       delay(50);
@@ -493,18 +475,21 @@ void loop() {
       (uint8_t)((frameLen >> 8) & 0xFF),
       (uint8_t)(frameLen & 0xFF)
     };
-    size_t headerWritten = connectedClient.write(header, sizeof(header));
-    size_t frameWritten = connectedClient.write(fb->buf, fb->len);
-    if (headerWritten != sizeof(header) || frameWritten != (size_t)fb->len) {
+
+    // >>> FIX 2: USE CHUNKED RELIABLE WRITE INSTEAD OF INSTANT DISCONNECT <<<
+    bool ok = sendAll(connectedClient, header, 4);
+    if (ok) {
+      ok = sendAll(connectedClient, fb->buf, fb->len);
+    }
+
+    esp_camera_fb_return(fb);
+
+    if (!ok) {
       Serial.println("[TCP] Write failed, disconnecting client");
       connectedClient.stop();
       streamingActive = false;
-      esp_camera_fb_return(fb);
       return;
     }
-
-    // Release frame buffer
-    esp_camera_fb_return(fb);
 
     // FPS calculation
     frameCount++;
@@ -522,7 +507,7 @@ void loop() {
       if (freeHeap < 30000 && !lowMemoryLock) {
         lowMemoryLock = true;
         streamingActive = false;
-        Serial.printf("⚠️ LOW MEMORY: %u bytes\n", freeHeap);
+        Serial.printf("LOW MEMORY: %u bytes\n", freeHeap);
         if (connectedClient && connectedClient.connected()) {
           connectedClient.stop();
         }

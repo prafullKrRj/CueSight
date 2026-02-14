@@ -18,19 +18,22 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.InetAddress
+import java.net.SocketTimeoutException
 import javax.net.SocketFactory
+
+
 
 class TcpFrameService {
     private companion object {
         private const val TAG = "TcpFrameService"
         private const val DEFAULT_ESP32_IP = "192.168.4.1"
         private const val PORT = 81
-        private const val CONNECT_TIMEOUT_MS = 3_000
-        private const val READ_TIMEOUT_MS = 5_000
+        private const val CONNECT_TIMEOUT_MS = 5_000
+        private const val READ_TIMEOUT_MS = 10_000     // <<< INCREASED from 5s to 10s
         private const val BUFFER_SIZE = 32_768
         private const val MAX_FRAME_BYTES = 100_000
-        private const val MIN_RETRY_DELAY_MS = 500L
-        private const val MAX_RETRY_DELAY_MS = 3_000L
+        private const val MIN_RETRY_DELAY_MS = 1_000L  // <<< INCREASED from 500ms
+        private const val MAX_RETRY_DELAY_MS = 5_000L  // <<< INCREASED from 3s
         private const val STATUS_CONNECTING = "STATUS:Connecting"
         private const val STATUS_STREAMING = "STATUS:Streaming"
         private const val STATUS_RECONNECTING = "STATUS:Reconnecting"
@@ -55,12 +58,6 @@ class TcpFrameService {
         ipAddress = ip
     }
 
-    /**
-     * CRITICAL FIX FOR "ENETUNREACH":
-     * Binds socket creation to a specific Android network interface.
-     * This forces traffic to use WiFi even when it has no internet.
-     * Must be called after connecting to ESP32 WiFi AP.
-     */
     fun bindToNetwork(network: Network) {
         Log.d(TAG, "Binding socket factory to specific network: $network")
         socketFactory = network.socketFactory
@@ -83,37 +80,35 @@ class TcpFrameService {
         return withContext(Dispatchers.IO) {
             connectionMutex.withLock {
                 try {
-                    if (ipAddress.isBlank()) {
-                        Log.e(TAG, "Cannot connect: empty IP address")
-                        return@withLock false
-                    }
-                    if (!isValidIpv4(ipAddress)) {
-                        Log.e(TAG, "Cannot connect: invalid IP address format")
+                    if (ipAddress.isBlank() || !isValidIpv4(ipAddress)) {
+                        Log.e(TAG, "Cannot connect: invalid IP address")
                         return@withLock false
                     }
 
                     Log.d(TAG, "Connecting to $ipAddress:$PORT (TCP)")
 
-                    // Best-effort reachability check (some devices/networks block ICMP probes).
-                    try {
-                        val reachable = InetAddress.getByName(ipAddress).isReachable(3000)
-                        if (!reachable) {
-                            Log.w(TAG, "IP unreachable via probe, attempting TCP connection")
-                        } else {
-                            Log.d(TAG, "ESP32 IP is reachable")
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Reachability probe failed, continuing: ${e.message}")
-                    }
+                    // >>> FIX: SKIP the reachability check — it wastes 3 seconds
+                    // >>> and often fails on ESP32 AP mode anyway
 
                     notifyMessage(STATUS_CONNECTING)
-                    shouldStayConnected = true
+
+                    // >>> FIX: Stop any existing reader FIRST, then close socket
+                    shouldStayConnected = false
+                    readerJob?.cancel()
+                    readerJob = null
+                    delay(100)  // let old reader die
                     closeInternal()
+                    delay(100)  // let ESP32 notice disconnect
+
+                    shouldStayConnected = true
                     val connected = openSocket()
                     if (!connected) {
                         shouldStayConnected = false
                         return@withLock false
                     }
+
+                    // >>> FIX: Small delay to let ESP32 process the connection
+                    delay(200)
 
                     startReaderLoop()
                     true
@@ -129,10 +124,18 @@ class TcpFrameService {
         scope.launch(Dispatchers.IO) {
             commandMutex.withLock {
                 try {
-                    output?.write("$command\n".toByteArray(Charsets.UTF_8))
-                    output?.flush()
+                    val out = output
+                    if (out == null) {
+                        Log.w(TAG, "Cannot send command, no output stream: $command")
+                        return@withLock
+                    }
+                    out.write("$command\n".toByteArray(Charsets.UTF_8))
+                    out.flush()
+                    Log.d(TAG, "Sent command: $command")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to send command over TCP channel: $command", e)
+                    Log.w(TAG, "Failed to send command: $command — ${e.message}")
+                    // >>> FIX: DON'T close the socket here!
+                    // The reader loop will detect the broken connection
                 }
             }
         }
@@ -151,6 +154,8 @@ class TcpFrameService {
         readerJob?.cancel()
         readerJob = scope.launch(Dispatchers.IO) {
             var retryDelayMs = MIN_RETRY_DELAY_MS
+            var consecutiveTimeouts = 0
+
             while (isActive && shouldStayConnected) {
                 try {
                     if (socket == null || input == null) {
@@ -158,10 +163,12 @@ class TcpFrameService {
                         notifyConnection(false)
                         if (!openSocket()) {
                             delay(retryDelayMs)
-                            retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS).coerceAtMost(MAX_RETRY_DELAY_MS)
+                            retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS)
+                                .coerceAtMost(MAX_RETRY_DELAY_MS)
                             continue
                         }
                         retryDelayMs = MIN_RETRY_DELAY_MS
+                        consecutiveTimeouts = 0
                     }
 
                     val stream = input ?: continue
@@ -172,6 +179,29 @@ class TcpFrameService {
                     val jpegBytes = ByteArray(len)
                     stream.readFully(jpegBytes)
                     notifyFrame(jpegBytes)
+
+                    // Reset on successful frame
+                    retryDelayMs = MIN_RETRY_DELAY_MS
+                    consecutiveTimeouts = 0
+
+                } catch (e: SocketTimeoutException) {
+                    // >>> FIX: DON'T reconnect on timeout!
+                    // The socket is still alive, just no data yet.
+                    // This happens when STREAM:START hasn't been sent yet.
+                    consecutiveTimeouts++
+                    Log.w(TAG, "Read timeout #$consecutiveTimeouts (socket still alive)")
+
+                    if (consecutiveTimeouts > 3) {
+                        // Only reconnect after 3 consecutive timeouts (30 seconds)
+                        Log.e(TAG, "Too many timeouts, reconnecting")
+                        closeInternal()
+                        notifyConnection(false)
+                        notifyMessage(STATUS_RECONNECTING)
+                        consecutiveTimeouts = 0
+                        delay(retryDelayMs)
+                    }
+                    // Otherwise just loop back and try reading again
+
                 } catch (e: Exception) {
                     if (!shouldStayConnected) break
                     Log.e(TAG, "TCP stream read failed: ${e.message}", e)
@@ -179,7 +209,8 @@ class TcpFrameService {
                     notifyConnection(false)
                     notifyMessage(STATUS_RECONNECTING)
                     delay(retryDelayMs)
-                    retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS).coerceAtMost(MAX_RETRY_DELAY_MS)
+                    retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS)
+                        .coerceAtMost(MAX_RETRY_DELAY_MS)
                 }
             }
         }
@@ -188,15 +219,17 @@ class TcpFrameService {
     private fun openSocket(): Boolean {
         return try {
             val newSocket = socketFactory?.createSocket() ?: Socket()
-            // Disable Nagle's algorithm to reduce per-frame latency for small JPEG payloads.
             newSocket.tcpNoDelay = true
             newSocket.soTimeout = READ_TIMEOUT_MS
+            newSocket.setSendBufferSize(4096)
+            newSocket.setReceiveBufferSize(BUFFER_SIZE)
             newSocket.connect(InetSocketAddress(ipAddress, PORT), CONNECT_TIMEOUT_MS)
             socket = newSocket
             input = DataInputStream(BufferedInputStream(newSocket.getInputStream(), BUFFER_SIZE))
             output = newSocket.getOutputStream()
             notifyConnection(true)
             notifyMessage(STATUS_STREAMING)
+            Log.d(TAG, "Socket connected to $ipAddress:$PORT")
             true
         } catch (e: Exception) {
             Log.e(TAG, "TCP connect failed: ${e.message}", e)
@@ -206,18 +239,9 @@ class TcpFrameService {
     }
 
     private fun closeInternal() {
-        try {
-            input?.close()
-        } catch (_: Exception) {
-        }
-        try {
-            output?.close()
-        } catch (_: Exception) {
-        }
-        try {
-            socket?.close()
-        } catch (_: Exception) {
-        }
+        try { input?.close() } catch (_: Exception) {}
+        try { output?.close() } catch (_: Exception) {}
+        try { socket?.close() } catch (_: Exception) {}
         input = null
         output = null
         socket = null
@@ -246,10 +270,10 @@ class TcpFrameService {
         if (parts.size != 4) return false
         return parts.all { part ->
             part.isNotEmpty() &&
-                part.length <= 3 &&
-                (part == "0" || !part.startsWith("0")) &&
-                part.all(Char::isDigit) &&
-                part.toIntOrNull() in 0..255
+                    part.length <= 3 &&
+                    (part == "0" || !part.startsWith("0")) &&
+                    part.all(Char::isDigit) &&
+                    part.toIntOrNull() in 0..255
         }
     }
 }
