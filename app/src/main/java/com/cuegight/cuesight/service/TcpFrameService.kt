@@ -38,6 +38,7 @@ class TcpFrameService {
         private const val STATUS_CONNECTING = "STATUS:Connecting"
         private const val STATUS_STREAMING = "STATUS:Streaming"
         private const val STATUS_RECONNECTING = "STATUS:Reconnecting"
+        private const val FRAME_LOG_INTERVAL = 50  // Log frame stats every N frames (matches ESP32)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -200,7 +201,7 @@ class TcpFrameService {
                     stream.readFully(jpegBytes)
                     
                     totalFramesReceived++
-                    if (totalFramesReceived % 50 == 0) {
+                    if (totalFramesReceived % FRAME_LOG_INTERVAL == 0) {
                         Log.d(TAG, "📺 Received $totalFramesReceived frames (latest: ${len} bytes)")
                     }
                     
@@ -301,16 +302,23 @@ class TcpFrameService {
 
     private fun closeInternal() {
         Log.d(TAG, "🔌 Closing sockets...")
+        var frameSocketClosed = false
+        var commandSocketClosed = false
+        
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
         try { 
             frameSocket?.close()
-            Log.d(TAG, "✅ Frame socket closed")
+            frameSocketClosed = true
         } catch (_: Exception) {}
         try { 
             commandSocket?.close()
-            Log.d(TAG, "✅ Command socket closed")
+            commandSocketClosed = true
         } catch (_: Exception) {}
+        
+        if (frameSocketClosed) Log.d(TAG, "✅ Frame socket closed")
+        if (commandSocketClosed) Log.d(TAG, "✅ Command socket closed")
+        
         input = null
         output = null
         frameSocket = null
