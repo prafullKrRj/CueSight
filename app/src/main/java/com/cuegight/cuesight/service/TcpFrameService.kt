@@ -31,14 +31,33 @@ class TcpFrameService {
         private const val COMMAND_PORT = 82
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val READ_TIMEOUT_MS = 10_000
-        private const val BUFFER_SIZE = 32_768
-        private const val MAX_FRAME_BYTES = 100_000
+        
+        // MEMORY OPTIMIZATION: Reduced buffer size from 32KB to 16KB
+        // QQVGA frames at quality 25 are ~1-2KB, 16KB is more than sufficient
+        private const val BUFFER_SIZE = 16_384
+        
+        // MEMORY OPTIMIZATION: Reduced max frame size from 100KB to 20KB
+        // QQVGA (160x120) at quality 25 produces ~1-2KB frames
+        // This prevents memory issues from corrupted/invalid frame length headers
+        private const val MAX_FRAME_BYTES = 20_000
+        
         private const val MIN_RETRY_DELAY_MS = 1_000L
         private const val MAX_RETRY_DELAY_MS = 5_000L
         private const val STATUS_CONNECTING = "STATUS:Connecting"
         private const val STATUS_STREAMING = "STATUS:Streaming"
         private const val STATUS_RECONNECTING = "STATUS:Reconnecting"
-        private const val FRAME_LOG_INTERVAL = 50  // Log frame stats every N frames (matches ESP32)
+        
+        // Log frame stats every N frames (matches ESP32)
+        private const val FRAME_LOG_INTERVAL = 50
+        
+        // Emotion code constants (matches ESP32)
+        private const val EMOTION_HAPPY: Byte = 0x01
+        private const val EMOTION_SAD: Byte = 0x02
+        private const val EMOTION_ANGRY: Byte = 0x03
+        private const val EMOTION_SURPRISED: Byte = 0x04
+        private const val EMOTION_NEUTRAL: Byte = 0x05
+        private const val EMOTION_NO_FACE: Byte = 0x06
+        private const val EMOTION_HIDDEN: Byte = 0x07
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -134,6 +153,59 @@ class TcpFrameService {
         }
     }
 
+    /**
+     * Send emotion command as binary byte code for memory efficiency.
+     * Sends the code twice for reliability (redundancy).
+     * 
+     * @param emotion Emotion string (Happy, Sad, Angry, Surprised, Neutral, No face)
+     * @param critical If true, sends the code twice for redundancy
+     */
+    fun sendEmotionCode(emotion: String, critical: Boolean = true) {
+        val code = when (emotion) {
+            "Happy" -> EMOTION_HAPPY
+            "Sad" -> EMOTION_SAD
+            "Angry" -> EMOTION_ANGRY
+            "Surprised" -> EMOTION_SURPRISED
+            "Neutral" -> EMOTION_NEUTRAL
+            "No face" -> EMOTION_NO_FACE
+            "?" -> EMOTION_HIDDEN
+            else -> null
+        }
+        
+        if (code != null) {
+            scope.launch(Dispatchers.IO) {
+                commandMutex.withLock {
+                    try {
+                        val out = output
+                        if (out == null) {
+                            Log.w(TAG, "⚠️ Cannot send emotion code, no output stream: $emotion")
+                            return@withLock
+                        }
+                        
+                        // Send as raw byte (no newline, no string conversion)
+                        out.write(byteArrayOf(code))
+                        out.flush()
+                        
+                        // RELIABILITY: Send twice for critical emotions
+                        if (critical) {
+                            delay(10)  // Small delay between sends
+                            out.write(byteArrayOf(code))
+                            out.flush()
+                            Log.d(TAG, "📤 Sent emotion code 2x (redundant): $emotion = 0x${code.toString(16).padStart(2, '0').uppercase()}")
+                        } else {
+                            Log.d(TAG, "📤 Sent emotion code: $emotion = 0x${code.toString(16).padStart(2, '0').uppercase()}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "❌ Failed to send emotion code: $emotion — ${e.message}")
+                    }
+                }
+            }
+        } else {
+            // Fallback to string command for unknown emotions
+            sendCommand("EMOTION:$emotion")
+        }
+    }
+
     fun sendCommand(command: String) {
         scope.launch(Dispatchers.IO) {
             commandMutex.withLock {
@@ -161,7 +233,7 @@ class TcpFrameService {
         readerJob = null
         closeInternal()
         notifyConnection(false)
-        Log.d(TAG, "✅ Disconnected")
+        Log.d(TAG, "✅ Disconnected and all resources released")
     }
 
     private fun startReaderLoop() {
@@ -170,6 +242,10 @@ class TcpFrameService {
             var retryDelayMs = MIN_RETRY_DELAY_MS
             var consecutiveTimeouts = 0
             var totalFramesReceived = 0
+            
+            // MEMORY OPTIMIZATION: Pre-allocate byte array for frame reading
+            // Reuse the same buffer to avoid repeated allocations
+            var frameBuffer: ByteArray? = null
 
             Log.d(TAG, "📺 Frame reader loop started")
             
@@ -195,19 +271,29 @@ class TcpFrameService {
                     // Read 4-byte big-endian frame length
                     val len = stream.readInt()
                     if (len <= 0 || len > MAX_FRAME_BYTES) {
-                        throw IllegalStateException("Invalid frame length: $len")
+                        throw IllegalStateException("Invalid frame length: $len (max: $MAX_FRAME_BYTES)")
                     }
                     
-                    // Read JPEG frame data
-                    val jpegBytes = ByteArray(len)
-                    stream.readFully(jpegBytes)
+                    // MEMORY OPTIMIZATION: Reuse buffer if possible, only reallocate if needed
+                    if (frameBuffer == null || frameBuffer.size != len) {
+                        frameBuffer = ByteArray(len)
+                    }
+                    
+                    // Read JPEG frame data into reused buffer
+                    stream.readFully(frameBuffer, 0, len)
                     
                     totalFramesReceived++
                     if (totalFramesReceived % FRAME_LOG_INTERVAL == 0) {
                         Log.d(TAG, "📺 Received $totalFramesReceived frames (latest: ${len} bytes)")
                     }
                     
-                    notifyFrame(jpegBytes)
+                    // MEMORY OPTIMIZATION: Pass only the bytes we need, not the whole buffer
+                    val frameData = if (frameBuffer.size == len) {
+                        frameBuffer
+                    } else {
+                        frameBuffer.copyOf(len)
+                    }
+                    notifyFrame(frameData)
 
                     // Reset on successful frame
                     retryDelayMs = MIN_RETRY_DELAY_MS
@@ -226,6 +312,9 @@ class TcpFrameService {
                         notifyMessage(STATUS_RECONNECTING)
                         consecutiveTimeouts = 0
                         delay(retryDelayMs)
+                        
+                        // MEMORY: Release frame buffer on disconnect
+                        frameBuffer = null
                     }
 
                 } catch (e: Exception) {
@@ -237,8 +326,14 @@ class TcpFrameService {
                     delay(retryDelayMs)
                     retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS)
                         .coerceAtMost(MAX_RETRY_DELAY_MS)
+                    
+                    // MEMORY: Release frame buffer on error
+                    frameBuffer = null
                 }
             }
+            
+            // MEMORY: Release frame buffer when loop exits
+            frameBuffer = null
             
             Log.d(TAG, "📺 Frame reader loop stopped (total frames received: $totalFramesReceived)")
         }
