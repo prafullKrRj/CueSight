@@ -19,3 +19,15 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep Compose lambda classes
+-keep class androidx.compose.** { *; }
+-keep class com.cuegight.cuesight.ComposableSingletons* { *; }
+-keepclassmembers class com.cuegight.cuesight.ComposableSingletons* {
+    *;
+}
+
+# Keep all lambda functions
+-keepclassmembers class * {
+    kotlin.jvm.functions.Function* *;
+}

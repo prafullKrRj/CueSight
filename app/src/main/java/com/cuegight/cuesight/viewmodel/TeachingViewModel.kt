@@ -3,6 +3,7 @@ package com.cuegight.cuesight.viewmodel
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,7 @@ import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.util.NetworkBindingHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -103,10 +105,15 @@ class TeachingViewModel(
     private var emotionLogJob: Job? = null
     private var lastFrameReceivedAt = 0L
     private var lastEmotionSent: String = ""
+    private var appContext: Context? = null
 
     init {
         initFaceDetector()
         setupWebSocketCallbacks()
+    }
+
+    fun setContext(context: Context) {
+        appContext = context.applicationContext
     }
 
     private fun initFaceDetector() {
@@ -209,6 +216,14 @@ class TeachingViewModel(
     fun connect() {
         viewModelScope.launch {
             try {
+                // CRITICAL FIX: Bind to WiFi network before connecting
+                appContext?.let { context ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val network = NetworkBindingHelper.bindToWiFiNetwork(context)
+                        network?.let { webSocketService.bindToNetwork(it) }
+                    }
+                }
+
                 val result = webSocketService.connect(_state.value.ipAddress)
                 if (result) {
                     _state.value = _state.value.copy(isConnected = true, error = "")
@@ -588,6 +603,14 @@ class TeachingViewModel(
         }
         faceDetector?.close()
         webSocketService.disconnect()
+
+        // Unbind network when ViewModel is destroyed
+        appContext?.let { context ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NetworkBindingHelper.unbindNetwork(context)
+            }
+        }
+
         Log.d("TeachingViewModel", "ViewModel cleared")
     }
 }

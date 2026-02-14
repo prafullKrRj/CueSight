@@ -1,5 +1,7 @@
 package com.cuegight.cuesight.viewmodel
 
+import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +12,7 @@ import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.util.NetworkBindingHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,12 +41,17 @@ class PracticeViewModel(
 
     private var streamJob: Job? = null
     private var emotionLogJob: Job? = null
+    private var appContext: Context? = null
 
     private val _state = MutableStateFlow(PracticeState())
     val state: StateFlow<PracticeState> = _state.asStateFlow()
 
     init {
         setupWebSocketCallbacks()
+    }
+
+    fun setContext(context: Context) {
+        appContext = context.applicationContext
     }
 
     private fun setupWebSocketCallbacks() {
@@ -91,6 +99,14 @@ class PracticeViewModel(
 
     fun connect() {
         viewModelScope.launch {
+            // CRITICAL FIX: Bind to WiFi network before connecting
+            appContext?.let { context ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val network = NetworkBindingHelper.bindToWiFiNetwork(context)
+                    network?.let { webSocketService.bindToNetwork(it) }
+                }
+            }
+
             val result = webSocketService.connect(_state.value.ipAddress)
             if (result) {
                 webSocketService.sendCommand("MODE:PRACTICE")
@@ -178,6 +194,13 @@ class PracticeViewModel(
         emotionLogJob?.cancel()
         stopStreaming()
         webSocketService.disconnect()
+
+        // Unbind network when ViewModel is destroyed
+        appContext?.let { context ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NetworkBindingHelper.unbindNetwork(context)
+            }
+        }
     }
 }
 

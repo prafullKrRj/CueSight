@@ -1,4 +1,3 @@
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -36,10 +35,16 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
     }
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
     }
     buildToolsVersion = "34.0.0"
 

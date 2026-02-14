@@ -1,12 +1,15 @@
 package com.cuegight.cuesight.viewmodel
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.data.model.FrameQuality
 import com.cuegight.cuesight.service.WebSocketService
+import com.cuegight.cuesight.util.NetworkBindingHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -42,6 +45,7 @@ class TestViewModel(
     private var faceDetector: FaceDetector? = null
     private var streamJob: Job? = null
     private var isDetecting = false
+    private var appContext: Context? = null
 
     private val _state = MutableStateFlow(TestState())
     val state: StateFlow<TestState> = _state.asStateFlow()
@@ -49,6 +53,10 @@ class TestViewModel(
     init {
         initFaceDetector()
         setupWebSocketCallbacks()
+    }
+
+    fun setContext(context: Context) {
+        appContext = context.applicationContext
     }
 
     private fun initFaceDetector() {
@@ -91,6 +99,14 @@ class TestViewModel(
 
     fun connect() {
         viewModelScope.launch {
+            // CRITICAL FIX: Bind to WiFi network before connecting
+            appContext?.let { context ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val network = NetworkBindingHelper.bindToWiFiNetwork(context)
+                    network?.let { webSocketService.bindToNetwork(it) }
+                }
+            }
+
             val result = webSocketService.connect(_state.value.ipAddress)
             if (result) {
                 webSocketService.sendCommand("MODE:TEACHING")
@@ -203,6 +219,13 @@ class TestViewModel(
         stopStreaming()
         webSocketService.disconnect()
         faceDetector?.close()
+
+        // Unbind network when ViewModel is destroyed
+        appContext?.let { context ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NetworkBindingHelper.unbindNetwork(context)
+            }
+        }
     }
 }
 

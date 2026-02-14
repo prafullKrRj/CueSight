@@ -23,6 +23,7 @@ import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.data.model.SessionStatus
 import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
+import com.cuegight.cuesight.util.NetworkBindingHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -45,6 +46,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import java.net.InetAddress
 import kotlin.math.max
 
 private const val DEFAULT_ESP32_IP = "192.168.4.1"
@@ -91,7 +93,7 @@ class SessionViewModel(
     private val emotionLogRepository: EmotionLogRepository
 ) : ViewModel() {
 
-    private val client = OkHttpClient()
+    private var client = OkHttpClient()
     private var streamJob: Job? = null
     private var frameWatchdogJob: Job? = null
     private var webSocket: WebSocket? = null
@@ -105,6 +107,7 @@ class SessionViewModel(
     private var pendingReconnect = false
     private var backgroundedAt: Long? = null
     private var emotionLogJob: Job? = null
+    private var appContext: Context? = null
 
     private val _state = MutableStateFlow(SessionState())
     val state: StateFlow<SessionState> = _state.asStateFlow()
@@ -130,6 +133,10 @@ class SessionViewModel(
 
     fun setIpAddress(ip: String) {
         _state.value = _state.value.copy(ipAddress = ip)
+    }
+
+    fun setContext(context: Context) {
+        appContext = context.applicationContext
     }
 
     fun manualConnect() {
@@ -304,6 +311,24 @@ class SessionViewModel(
         viewModelScope.launch {
             _state.value = _state.value.copy(isReconnecting = true)
             pendingReconnect = true
+
+            // Re-bind to WiFi network before reconnecting
+            appContext?.let { context ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Log.d("SessionViewModel", "Re-binding to WiFi network for reconnection...")
+                    val network = NetworkBindingHelper.bindToWiFiNetwork(context)
+                    if (network != null) {
+                        Log.d("SessionViewModel", "✅ Network re-bound successfully")
+                        // Rebuild client with network binding
+                        client = OkHttpClient.Builder()
+                            .socketFactory(network.socketFactory)
+                            .build()
+                    } else {
+                        Log.w("SessionViewModel", "⚠️ Could not re-bind to WiFi network")
+                    }
+                }
+            }
+
             val success = withTimeoutOrNull(RECONNECT_TIMEOUT_MS) {
                 val targetIp = if (_state.value.ipAddress.isBlank()) {
                     DEFAULT_ESP32_IP
@@ -374,6 +399,23 @@ class SessionViewModel(
         return withContext(Dispatchers.IO) {
             try {
                 Log.d("SessionViewModel", "connectWebSocket() called - IP: $ipAddress, startStream: $startStream")
+
+                // CRITICAL FIX: Bind to WiFi network before connecting
+                appContext?.let { context ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Log.d("SessionViewModel", "Attempting to bind to WiFi network...")
+                        val network = NetworkBindingHelper.bindToWiFiNetwork(context)
+                        if (network != null) {
+                            Log.d("SessionViewModel", "✅ Successfully bound to WiFi network: $network")
+                            // Rebuild OkHttpClient with network-bound socket factory
+                            client = OkHttpClient.Builder()
+                                .socketFactory(network.socketFactory)
+                                .build()
+                        } else {
+                            Log.w("SessionViewModel", "⚠️ Could not bind to WiFi network, will try direct connection")
+                        }
+                    }
+                }
 
                 // Check if we can reach ESP32 (ping check)
                 try {
@@ -803,6 +845,13 @@ class SessionViewModel(
         emotionLogJob?.cancel()
         stopStreaming()
         faceDetector?.close()
+
+        // Unbind network when ViewModel is destroyed
+        appContext?.let { context ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NetworkBindingHelper.unbindNetwork(context)
+            }
+        }
     }
 }
 

@@ -31,7 +31,10 @@ fun DeveloperTestScreen(
 
     BackHandler { showEndDialog = true }
 
-    LaunchedEffect(Unit) { viewModel.startSession() }
+    LaunchedEffect(Unit) {
+        viewModel.setContext(context)
+        viewModel.startSession()
+    }
     LaunchedEffect(state.toastMessage) {
         state.toastMessage?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()

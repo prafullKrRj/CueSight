@@ -96,6 +96,7 @@ fun SessionCoreScreen(
     }
 
     LaunchedEffect(Unit) {
+        viewModel.setContext(context)
         viewModel.startSession(studentId, sessionMode)
     }
 

@@ -1,5 +1,6 @@
 package com.cuegight.cuesight.service
 
+import android.net.Network
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,7 @@ class WebSocketService {
         private const val CONNECTION_RETRY_DELAY_MS = 500L
     }
 
-    private val client = OkHttpClient.Builder()
+    private var client = OkHttpClient.Builder()
         .retryOnConnectionFailure(true)
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -43,6 +44,19 @@ class WebSocketService {
 
     fun setIpAddress(ip: String) {
         ipAddress = ip
+    }
+
+    /**
+     * CRITICAL FIX FOR "ENETUNREACH":
+     * Binds the OkHttp client to a specific Android network interface.
+     * This forces traffic to use WiFi even when it has no internet.
+     * Must be called after connecting to ESP32 WiFi AP.
+     */
+    fun bindToNetwork(network: Network) {
+        Log.d(TAG, "Binding OkHttp client to specific network: $network")
+        client = client.newBuilder()
+            .socketFactory(network.socketFactory)
+            .build()
     }
 
     fun setFrameCallback(callback: (ByteArray) -> Unit) {

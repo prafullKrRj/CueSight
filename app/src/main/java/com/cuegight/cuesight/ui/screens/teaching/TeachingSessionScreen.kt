@@ -58,6 +58,7 @@ fun TeachingSessionScreen(
 
     // Start session on launch
     LaunchedEffect(Unit) {
+        viewModel.setContext(context)
         viewModel.startSession(studentId)
     }
 
@@ -358,7 +359,7 @@ fun CameraFeedCard(
             }
 
             // Pause Overlay
-            AnimatedVisibility(
+            this@Card.AnimatedVisibility(
                 visible = state.isPaused,
                 enter = fadeIn(),
                 exit = fadeOut()
