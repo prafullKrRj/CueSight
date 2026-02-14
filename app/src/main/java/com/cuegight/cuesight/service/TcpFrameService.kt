@@ -191,9 +191,10 @@ class TcpFrameService {
                             delay(10)  // Small delay between sends
                             out.write(byteArrayOf(code))
                             out.flush()
-                            Log.d(TAG, "📤 Sent emotion code 2x (redundant): $emotion = 0x${code.toString(16).padStart(2, '0').uppercase()}")
+                            // Note: For codes 0x01-0x07, hex string is always "01"-"07" (no letters)
+                            Log.d(TAG, "📤 Sent emotion code 2x (redundant): $emotion = 0x${code.toString(16).padStart(2, '0')}")
                         } else {
-                            Log.d(TAG, "📤 Sent emotion code: $emotion = 0x${code.toString(16).padStart(2, '0').uppercase()}")
+                            Log.d(TAG, "📤 Sent emotion code: $emotion = 0x${code.toString(16).padStart(2, '0')}")
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "❌ Failed to send emotion code: $emotion — ${e.message}")
@@ -287,12 +288,9 @@ class TcpFrameService {
                         Log.d(TAG, "📺 Received $totalFramesReceived frames (latest: ${len} bytes)")
                     }
                     
-                    // MEMORY OPTIMIZATION: Pass only the bytes we need, not the whole buffer
-                    val frameData = if (frameBuffer.size == len) {
-                        frameBuffer
-                    } else {
-                        frameBuffer.copyOf(len)
-                    }
+                    // MEMORY OPTIMIZATION: Pass the buffer directly
+                    // Since we reuse the buffer, we need to copy the data for the callback
+                    val frameData = frameBuffer.copyOf(len)
                     notifyFrame(frameData)
 
                     // Reset on successful frame

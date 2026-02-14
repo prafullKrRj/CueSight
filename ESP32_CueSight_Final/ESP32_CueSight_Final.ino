@@ -102,7 +102,11 @@ const char* const EMOTION_STRINGS[] PROGMEM = {
 
 // Helper function to get emotion string from PROGMEM
 void getEmotionString(uint8_t code, char* buffer, size_t bufferSize) {
-  if (bufferSize == 0) return;  // Safety check
+  // Safety check: ensure buffer has space for at least 1 character + null terminator
+  if (bufferSize < 2) {
+    if (bufferSize == 1) buffer[0] = '\0';
+    return;
+  }
   
   if (code == 0 || code > 7) {
     strncpy_P(buffer, EMOTION_STR_WAITING, bufferSize - 1);
@@ -207,12 +211,10 @@ void showFeedbackDisplay(const char* feedbackText) {
   display.println(F("Feedback:"));
   display.setTextSize(2);
   display.setCursor(0, 16);
-  // Safely truncate feedback to fit display
+  // Safely truncate feedback to fit display (simpler approach)
   char truncated[17];
-  size_t len = strlen(feedbackText);
-  if (len > 16) len = 16;
-  memcpy(truncated, feedbackText, len);
-  truncated[len] = '\0';
+  strncpy(truncated, feedbackText, 16);
+  truncated[16] = '\0';
   display.println(truncated);
   display.setTextSize(1);
   display.setCursor(0, 50);
@@ -689,10 +691,9 @@ void loop() {
             frameClient.stop();
           }
           
-          // Show error without long blocking delay
+          // Show error message immediately without blocking delay
           fastOLEDUpdate("Low Memory!", "< 25KB free", 2);
-          delay(1000);  // Reduced from 3000ms to 1000ms to stay responsive
-          fastOLEDUpdate("Restart ESP32", "to recover", 1);
+          // Note: System will remain in this state until ESP32 is restarted
         }
       } else if (freeHeap < 30000) {
         // WARNING: Heap getting low but still above critical threshold

@@ -129,8 +129,10 @@ class TestViewModel(
     }
 
     fun startStreaming() {
-        _state.value = _state.value.copy(isStreaming = true, error = "", warning = "")
-        webSocketService.sendCommand("STREAM:START")
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isStreaming = true, error = "", warning = "")
+            webSocketService.sendCommand("STREAM:START")
+        }
     }
 
     fun stopStreaming() {
