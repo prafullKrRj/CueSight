@@ -243,7 +243,7 @@ fun ConfusionMatrixCard(result: CwaResult?) {
             result?.let {
                 ConfusionMatrixGrid(
                     matrix = it.confusionMatrix,
-                    emotions = it.emotions
+                    emotions = it.confusionMatrix.keys.sorted()
                 )
             } ?: Text("Computing...", style = MaterialTheme.typography.bodyLarge)
         }
