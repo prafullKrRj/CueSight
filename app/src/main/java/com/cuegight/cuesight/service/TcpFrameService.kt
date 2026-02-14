@@ -38,6 +38,7 @@ class TcpFrameService {
         private const val STATUS_CONNECTING = "STATUS:Connecting"
         private const val STATUS_STREAMING = "STATUS:Streaming"
         private const val STATUS_RECONNECTING = "STATUS:Reconnecting"
+        private const val FRAME_LOG_INTERVAL = 50  // Log frame stats every N frames (matches ESP32)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -64,8 +65,16 @@ class TcpFrameService {
     }
 
     fun bindToNetwork(network: Network) {
-        Log.d(TAG, "Binding socket factory to specific network: $network")
+        Log.d(TAG, "✅ Binding socket factory to specific network: $network")
         socketFactory = network.socketFactory
+        Log.d(TAG, "✅ Socket factory bound successfully")
+    }
+    
+    private fun warnIfSocketFactoryMissing() {
+        if (socketFactory == null) {
+            Log.w(TAG, "⚠️ WARNING: No socket factory! Network binding may not have been called.")
+            Log.w(TAG, "⚠️ Connection may fail if device has mobile data enabled.")
+        }
     }
 
     fun setFrameCallback(callback: (ByteArray) -> Unit) {
@@ -86,11 +95,12 @@ class TcpFrameService {
             connectionMutex.withLock {
                 try {
                     if (ipAddress.isBlank() || !isValidIpv4(ipAddress)) {
-                        Log.e(TAG, "Cannot connect: invalid IP address")
+                        Log.e(TAG, "❌ Cannot connect: invalid IP address")
                         return@withLock false
                     }
 
-                    Log.d(TAG, "Connecting to $ipAddress (Frame:$FRAME_PORT, Command:$COMMAND_PORT)")
+                    Log.d(TAG, "🔌 Connecting to $ipAddress (Frame:$FRAME_PORT, Command:$COMMAND_PORT)")
+                    warnIfSocketFactoryMissing()
 
                     notifyMessage(STATUS_CONNECTING)
 
@@ -106,6 +116,7 @@ class TcpFrameService {
                     val connected = openSockets()
                     if (!connected) {
                         shouldStayConnected = false
+                        Log.e(TAG, "❌ Failed to open sockets")
                         return@withLock false
                     }
 
@@ -113,9 +124,10 @@ class TcpFrameService {
                     delay(200)
 
                     startReaderLoop()
+                    Log.d(TAG, "✅ Connection complete, reader loop started")
                     true
                 } catch (e: Exception) {
-                    Log.e(TAG, "Connection error: ${e.message}", e)
+                    Log.e(TAG, "❌ Connection error: ${e.message}", e)
                     false
                 }
             }
@@ -128,14 +140,14 @@ class TcpFrameService {
                 try {
                     val out = output
                     if (out == null) {
-                        Log.w(TAG, "Cannot send command, no output stream: $command")
+                        Log.w(TAG, "⚠️ Cannot send command, no output stream: $command")
                         return@withLock
                     }
                     out.write("$command\n".toByteArray(Charsets.UTF_8))
                     out.flush()
-                    Log.d(TAG, "Sent command: $command")
+                    Log.d(TAG, "📤 Sent command: $command")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to send command: $command — ${e.message}")
+                    Log.w(TAG, "❌ Failed to send command: $command — ${e.message}")
                     // Don't close the socket here - let reader loop detect failure
                 }
             }
@@ -143,12 +155,13 @@ class TcpFrameService {
     }
 
     fun disconnect() {
+        Log.d(TAG, "🔌 Disconnecting...")
         shouldStayConnected = false
         readerJob?.cancel()
         readerJob = null
         closeInternal()
         notifyConnection(false)
-        Log.d(TAG, "Disconnected")
+        Log.d(TAG, "✅ Disconnected")
     }
 
     private fun startReaderLoop() {
@@ -156,13 +169,18 @@ class TcpFrameService {
         readerJob = scope.launch(Dispatchers.IO) {
             var retryDelayMs = MIN_RETRY_DELAY_MS
             var consecutiveTimeouts = 0
+            var totalFramesReceived = 0
 
+            Log.d(TAG, "📺 Frame reader loop started")
+            
             while (isActive && shouldStayConnected) {
                 try {
                     if (frameSocket == null || input == null) {
+                        Log.w(TAG, "⚠️ Frame socket not connected, attempting reconnect...")
                         notifyMessage(STATUS_RECONNECTING)
                         notifyConnection(false)
                         if (!openSockets()) {
+                            Log.e(TAG, "❌ Reconnect failed, retrying in ${retryDelayMs}ms...")
                             delay(retryDelayMs)
                             retryDelayMs = (retryDelayMs + MIN_RETRY_DELAY_MS)
                                 .coerceAtMost(MAX_RETRY_DELAY_MS)
@@ -173,12 +191,22 @@ class TcpFrameService {
                     }
 
                     val stream = input ?: continue
+                    
+                    // Read 4-byte big-endian frame length
                     val len = stream.readInt()
                     if (len <= 0 || len > MAX_FRAME_BYTES) {
                         throw IllegalStateException("Invalid frame length: $len")
                     }
+                    
+                    // Read JPEG frame data
                     val jpegBytes = ByteArray(len)
                     stream.readFully(jpegBytes)
+                    
+                    totalFramesReceived++
+                    if (totalFramesReceived % FRAME_LOG_INTERVAL == 0) {
+                        Log.d(TAG, "📺 Received $totalFramesReceived frames (latest: ${len} bytes)")
+                    }
+                    
                     notifyFrame(jpegBytes)
 
                     // Reset on successful frame
@@ -188,11 +216,11 @@ class TcpFrameService {
                 } catch (e: SocketTimeoutException) {
                     // Don't reconnect on timeout - socket is still alive
                     consecutiveTimeouts++
-                    Log.w(TAG, "Read timeout #$consecutiveTimeouts (socket still alive)")
+                    Log.w(TAG, "⏱️ Read timeout #$consecutiveTimeouts (socket still alive, waiting for frames...)")
 
                     if (consecutiveTimeouts > 3) {
                         // Only reconnect after 3 consecutive timeouts (30 seconds)
-                        Log.e(TAG, "Too many timeouts, reconnecting both sockets")
+                        Log.e(TAG, "❌ Too many timeouts, reconnecting both sockets")
                         closeInternal()
                         notifyConnection(false)
                         notifyMessage(STATUS_RECONNECTING)
@@ -202,7 +230,7 @@ class TcpFrameService {
 
                 } catch (e: Exception) {
                     if (!shouldStayConnected) break
-                    Log.e(TAG, "TCP stream read failed: ${e.message}", e)
+                    Log.e(TAG, "❌ TCP stream read failed: ${e.message}", e)
                     closeInternal()
                     notifyConnection(false)
                     notifyMessage(STATUS_RECONNECTING)
@@ -211,46 +239,82 @@ class TcpFrameService {
                         .coerceAtMost(MAX_RETRY_DELAY_MS)
                 }
             }
+            
+            Log.d(TAG, "📺 Frame reader loop stopped (total frames received: $totalFramesReceived)")
         }
     }
 
-    private fun openSockets(): Boolean {
+    private suspend fun openSockets(): Boolean {
         return try {
+            Log.d(TAG, "🔌 Opening sockets...")
+            warnIfSocketFactoryMissing()
+            
             // Open frame socket (port 81, read-only)
-            val newFrameSocket = socketFactory?.createSocket() ?: Socket()
-            newFrameSocket.tcpNoDelay = true
-            newFrameSocket.soTimeout = READ_TIMEOUT_MS
-            newFrameSocket.setReceiveBufferSize(BUFFER_SIZE)
+            Log.d(TAG, "🔌 Creating frame socket for port $FRAME_PORT...")
+            val newFrameSocket = (socketFactory?.createSocket() ?: Socket()).apply {
+                tcpNoDelay = true
+                soTimeout = READ_TIMEOUT_MS
+                setReceiveBufferSize(BUFFER_SIZE)
+            }
+            Log.d(TAG, "🔌 Connecting frame socket to $ipAddress:$FRAME_PORT...")
             newFrameSocket.connect(InetSocketAddress(ipAddress, FRAME_PORT), CONNECT_TIMEOUT_MS)
             frameSocket = newFrameSocket
             input = DataInputStream(BufferedInputStream(newFrameSocket.getInputStream(), BUFFER_SIZE))
-            Log.d(TAG, "Frame socket connected to $ipAddress:$FRAME_PORT")
+            Log.d(TAG, "✅ Frame socket connected to $ipAddress:$FRAME_PORT")
+
+            // CRITICAL: 100ms delay between socket connections
+            // ESP32 needs time to process the first connection before accepting the second.
+            // Without this delay, ESP32 may become unstable, leading to WiFi disconnections
+            // or the command socket failing to connect properly.
+            delay(100)
 
             // Open command socket (port 82, write-only)
-            val newCommandSocket = socketFactory?.createSocket() ?: Socket()
-            newCommandSocket.tcpNoDelay = true
-            // No read timeout needed for write-only socket
-            newCommandSocket.setSendBufferSize(4096)
+            Log.d(TAG, "🔌 Creating command socket for port $COMMAND_PORT...")
+            val newCommandSocket = (socketFactory?.createSocket() ?: Socket()).apply {
+                tcpNoDelay = true
+                setSendBufferSize(4096)
+            }
+            Log.d(TAG, "🔌 Connecting command socket to $ipAddress:$COMMAND_PORT...")
             newCommandSocket.connect(InetSocketAddress(ipAddress, COMMAND_PORT), CONNECT_TIMEOUT_MS)
             commandSocket = newCommandSocket
             output = newCommandSocket.getOutputStream()
-            Log.d(TAG, "Command socket connected to $ipAddress:$COMMAND_PORT")
+            Log.d(TAG, "✅ Command socket connected to $ipAddress:$COMMAND_PORT")
 
             notifyConnection(true)
             notifyMessage(STATUS_STREAMING)
+            Log.d(TAG, "✅ Both sockets connected successfully!")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "TCP connect failed: ${e.message}", e)
+            Log.e(TAG, "❌ Failed to establish TCP connection: ${e.message}", e)
             closeInternal()
             false
         }
     }
 
     private fun closeInternal() {
+        Log.d(TAG, "🔌 Closing sockets...")
+        
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
-        try { frameSocket?.close() } catch (_: Exception) {}
-        try { commandSocket?.close() } catch (_: Exception) {}
+        
+        frameSocket?.let { socket ->
+            try {
+                socket.close()
+                Log.d(TAG, "✅ Frame socket closed")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Frame socket close failed: ${e.message}")
+            }
+        }
+        
+        commandSocket?.let { socket ->
+            try {
+                socket.close()
+                Log.d(TAG, "✅ Command socket closed")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Command socket close failed: ${e.message}")
+            }
+        }
+        
         input = null
         output = null
         frameSocket = null
