@@ -93,7 +93,6 @@ class TcpFrameService {
                     }
 
                     Log.d(TAG, "🔌 Connecting to $ipAddress (Frame:$FRAME_PORT, Command:$COMMAND_PORT)")
-                    Log.d(TAG, "🔌 Socket factory bound: ${socketFactory != null}")
                     
                     if (socketFactory == null) {
                         Log.w(TAG, "⚠️ WARNING: No socket factory! Network binding may not have been called.")
@@ -245,7 +244,6 @@ class TcpFrameService {
     private suspend fun openSockets(): Boolean {
         return try {
             Log.d(TAG, "🔌 Opening sockets...")
-            Log.d(TAG, "🔌 SocketFactory available: ${socketFactory != null}")
             
             if (socketFactory == null) {
                 Log.w(TAG, "⚠️ WARNING: No socket factory bound! Connection may fail if device has mobile data.")
