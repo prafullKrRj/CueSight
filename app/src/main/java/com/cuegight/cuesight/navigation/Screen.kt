@@ -1,6 +1,24 @@
 package com.cuegight.cuesight.navigation
 
 sealed class Screen(val route: String) {
+    // New flow screens
+    object Splash : Screen("splash")
+    object Connection : Screen("connection")
+    
+    // New HTTP-based session screens
+    object NewTeachingSession : Screen("new_teaching_session/{studentId}/{studentName}") {
+        fun createRoute(studentId: Long, studentName: String) = 
+            "new_teaching_session/$studentId/${studentName.replace("/", "_")}"
+    }
+    object NewPracticeSession : Screen("new_practice_session/{studentId}/{studentName}") {
+        fun createRoute(studentId: Long, studentName: String) = 
+            "new_practice_session/$studentId/${studentName.replace("/", "_")}"
+    }
+    
+    // Analytics
+    object Analytics : Screen("analytics")
+    
+    // Legacy screens (will be refactored)
     object Entry : Screen("entry")
     object Dashboard : Screen("dashboard")
     object Students : Screen("students")
