@@ -67,7 +67,9 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-//    implementation("com.squareup.okhttp3:okhttp:5.2.0")
+    
+    // Networking - OkHttp for HTTP streaming
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.coil.compose)
 
     implementation(libs.retrofit)
@@ -93,4 +95,7 @@ dependencies {
     implementation(libs.vico.compose)
     implementation(libs.vico.compose.m3)
     implementation(libs.vico.core)
+    
+    // Lottie animations
+    implementation("com.airbnb.android:lottie-compose:6.1.0")
 }
