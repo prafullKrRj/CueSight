@@ -8,6 +8,8 @@ import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.data.repository.StudentRepository
 import com.cuegight.cuesight.feature.connection.ConnectionViewModel
+import com.cuegight.cuesight.feature.practice.NewPracticeViewModel
+import com.cuegight.cuesight.feature.teaching.NewTeachingViewModel
 import com.cuegight.cuesight.service.TcpFrameService
 import com.cuegight.cuesight.viewmodel.DashboardViewModel
 import com.cuegight.cuesight.viewmodel.PracticeViewModel
@@ -36,7 +38,7 @@ val appModule = module {
     single { HttpCommandSender() }
     single { ConnectionManager(androidContext()) }
 
-    // ViewModels - Legacy
+    // ViewModels - Legacy (keeping for backwards compatibility during transition)
     viewModel { DashboardViewModel(get(), get(), get()) }
     viewModel { StudentViewModel(get(), get()) }
     viewModel { SessionViewModel(get(), get(), get()) }
@@ -44,6 +46,8 @@ val appModule = module {
     viewModel { PracticeViewModel(get(), get(), get()) }
     viewModel { TestViewModel(get()) }
     
-    // ViewModels - New
+    // ViewModels - New HTTP-based (no database logging)
     viewModel { ConnectionViewModel(get(), get()) }
+    viewModel { NewTeachingViewModel(get(), get()) }
+    viewModel { NewPracticeViewModel(get()) }
 }
