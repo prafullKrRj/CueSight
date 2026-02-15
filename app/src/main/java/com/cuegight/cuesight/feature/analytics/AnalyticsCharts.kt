@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.yml.charts.axis.AxisData
+import com.cuegight.cuesight.ui.theme.CueSightColors
 import co.yml.charts.common.model.Point
 import co.yml.charts.ui.barchart.BarChart
 import co.yml.charts.ui.barchart.models.BarChartData
@@ -339,17 +340,17 @@ fun EmotionAccuracyChart(
 
 private fun getAccuracyColor(accuracy: Float): Color {
     return when {
-        accuracy >= 0.8f -> Color(0xFF2E7D32) // Darker Green
-        accuracy >= 0.6f -> Color(0xFFEF6C00) // Darker Orange
-        else -> Color(0xFFC62828) // Darker Red
+        accuracy >= 0.8f -> CueSightColors.SuccessGreen // High accuracy - Dark Green
+        accuracy >= 0.6f -> CueSightColors.WarningOrange // Moderate accuracy - Orange
+        else -> CueSightColors.ErrorRed // Low accuracy - Red
     }
 }
 
 private fun getResponseTimeColor(bucket: String): Color {
     return when (bucket) {
-        "< 1s" -> Color(0xFF2E7D32) // Fast - Green
-        "1-3s" -> Color(0xFF43A047) // Good - Light Green
-        "3-5s" -> Color(0xFFEF6C00) // Slow - Orange
-        else -> Color(0xFFC62828) // Very Slow - Red
+        "< 1s" -> CueSightColors.SuccessGreen // Fast - Dark Green
+        "1-3s" -> CueSightColors.GoodGreen // Good - Light Green
+        "3-5s" -> CueSightColors.WarningOrange // Slow - Orange
+        else -> CueSightColors.ErrorRed // Very Slow - Red
     }
 }

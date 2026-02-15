@@ -37,6 +37,12 @@ object CueSightColors {
     val Red = Color(0xFFFF5252)
     val Teal = Color(0xFF009688)
     
+    // Semantic colors for performance metrics
+    val SuccessGreen = Color(0xFF2E7D32)      // Dark green for high accuracy/fast response
+    val GoodGreen = Color(0xFF43A047)         // Light green for good performance
+    val WarningOrange = Color(0xFFEF6C00)     // Orange for moderate/slow performance
+    val ErrorRed = Color(0xFFC62828)          // Red for low accuracy/very slow response
+    
     // Gradients with yellow theme
     val PrimaryGradient = Brush.horizontalGradient(listOf(
         Color(0xFFFBC02D),  // Yellow

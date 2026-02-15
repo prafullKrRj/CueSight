@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.cuegight.cuesight.ui.theme.CueSightColors
 
 /**
  * Unique visualization components for analytics dashboard
@@ -146,9 +147,9 @@ fun ConfusionMatrixHeatmap(
 
                             val cellColor = remember(actualEmotion, predictedEmotion, intensity) {
                                 if (actualEmotion == predictedEmotion) {
-                                    Color(0xFF4CAF50).copy(alpha = 0.2f + (intensity * 0.6f))
+                                    CueSightColors.Green.copy(alpha = 0.2f + (intensity * 0.6f))
                                 } else {
-                                    Color(0xFFF44336).copy(alpha = 0.1f + (intensity * 0.5f))
+                                    CueSightColors.Red.copy(alpha = 0.1f + (intensity * 0.5f))
                                 }
                             }
 
@@ -214,7 +215,7 @@ fun AnimatedStatCard(
                 Text(
                     text = if (it > 0) "↑ ${String.format("%.1f", it)}%" else "↓ ${String.format("%.1f", -it)}%",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (it > 0) Color(0xFF4CAF50) else Color(0xFFF44336),
+                    color = if (it > 0) CueSightColors.Green else CueSightColors.Red,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -226,8 +227,8 @@ fun AnimatedStatCard(
 
 private fun getMasteryColor(mastery: Float): Color {
     return when {
-        mastery >= 0.8f -> Color(0xFF4CAF50) // Green
-        mastery >= 0.6f -> Color(0xFFFF9800) // Orange
-        else -> Color(0xFFF44336) // Red
+        mastery >= 0.8f -> CueSightColors.Green // High mastery
+        mastery >= 0.6f -> CueSightColors.Orange // Moderate mastery
+        else -> CueSightColors.Red // Low mastery
     }
 }
