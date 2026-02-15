@@ -138,7 +138,7 @@ fun LearningCurveChart(
         LineChart(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .heightIn(min = 200.dp, max = 280.dp)
                 .padding(top = 8.dp),
             lineChartData = lineChartData
         )
@@ -247,7 +247,7 @@ fun ResponseTimeChart(
         BarChart(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .heightIn(min = 200.dp, max = 280.dp)
                 .padding(top = 8.dp),
             barChartData = barChartData
         )
@@ -331,7 +331,7 @@ fun EmotionAccuracyChart(
         BarChart(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .heightIn(min = 200.dp, max = 280.dp)
                 .padding(top = 8.dp),
             barChartData = barChartData
         )

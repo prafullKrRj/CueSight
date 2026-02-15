@@ -3,7 +3,9 @@ package com.cuegight.cuesight.feature.analytics
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -102,9 +104,13 @@ fun ConfusionMatrixHeatmap(
             .maxOrNull() ?: 1
     }
 
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+    ) {
         // Header row
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.wrapContentWidth()) {
             Box(modifier = Modifier.size(60.dp)) {} // Empty corner
             emotions.forEach { emotion ->
                 key(emotion) {
@@ -126,7 +132,7 @@ fun ConfusionMatrixHeatmap(
         // Data rows
         emotions.forEach { actualEmotion ->
             key(actualEmotion) {
-                Row(modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.wrapContentWidth()) {
                     // Row label
                     Box(
                         modifier = Modifier.size(60.dp),
