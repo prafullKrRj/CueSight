@@ -54,6 +54,6 @@ val appModule = module {
     viewModel { NewPracticeViewModel(get(), get()) } // Now with database logging
     viewModel { AnalyticsViewModel(get(), get()) }
     viewModel { (studentId: Long) -> 
-        StudentAnalyticsViewModel(studentId, get(), get(), get())
+        StudentAnalyticsViewModel(studentId, get(), get())
     }
 }
