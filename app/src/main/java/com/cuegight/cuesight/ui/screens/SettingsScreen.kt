@@ -23,7 +23,6 @@ fun SettingsScreen(
     var isConnected by remember { mutableStateOf(false) }
     var isTesting by remember { mutableStateOf(false) }
     var notificationsEnabled by remember { mutableStateOf(true) }
-    var soundEnabled by remember { mutableStateOf(true) }
     
     Scaffold(
         topBar = {
@@ -204,36 +203,6 @@ fun SettingsScreen(
                             Switch(
                                 checked = notificationsEnabled,
                                 onCheckedChange = { notificationsEnabled = it }
-                            )
-                        }
-                        
-                        Divider(modifier = Modifier.padding(vertical = 12.dp))
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.VolumeUp, contentDescription = null)
-                                Column {
-                                    Text(
-                                        text = "Sound Effects",
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                    Text(
-                                        text = "Audio feedback during sessions",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                    )
-                                }
-                            }
-                            Switch(
-                                checked = soundEnabled,
-                                onCheckedChange = { soundEnabled = it }
                             )
                         }
                     }
