@@ -10,6 +10,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cuegight.cuesight.data.model.SessionMode
+import com.cuegight.cuesight.feature.connection.ConnectionScreen
+import com.cuegight.cuesight.feature.splash.SplashScreen
 import com.cuegight.cuesight.navigation.Screen
 import com.cuegight.cuesight.ui.screens.AddStudentScreen
 import com.cuegight.cuesight.ui.screens.EntryScreen
@@ -39,8 +41,30 @@ fun CueSightApp() {
     
     NavHost(
         navController = navController,
-        startDestination = Screen.Entry.route
+        startDestination = Screen.Splash.route
     ) {
+        // New flow
+        composable(Screen.Splash.route) {
+            SplashScreen(
+                onNavigateToConnection = {
+                    navController.navigate(Screen.Connection.route) {
+                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        composable(Screen.Connection.route) {
+            ConnectionScreen(
+                onNavigateToHome = {
+                    navController.navigate(Screen.Students.route) {
+                        popUpTo(Screen.Connection.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        // Legacy entry screen (for backwards compatibility during transition)
         composable(Screen.Entry.route) {
             EntryScreen(
                 onNavigateToStudentEntry = {

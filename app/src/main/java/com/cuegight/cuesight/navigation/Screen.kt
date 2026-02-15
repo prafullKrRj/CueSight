@@ -1,6 +1,11 @@
 package com.cuegight.cuesight.navigation
 
 sealed class Screen(val route: String) {
+    // New flow screens
+    object Splash : Screen("splash")
+    object Connection : Screen("connection")
+    
+    // Legacy screens (will be refactored)
     object Entry : Screen("entry")
     object Dashboard : Screen("dashboard")
     object Students : Screen("students")
