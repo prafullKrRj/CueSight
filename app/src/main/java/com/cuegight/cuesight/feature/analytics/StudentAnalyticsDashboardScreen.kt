@@ -416,8 +416,7 @@ private fun OverallStatsCard(
                 StatItem(
                     label = "ERPI",
                     value = erpiResult?.let { "%.3f".format(it.erpiScore) } ?: "—",
-                    color = erpiResult?.let { 
-                        erpiResult?.let { getErpiScoreColor(it.erpiScore) } ?: MaterialTheme.colorScheme.onSecondaryContainer
+                    color = erpiResult?.let { getErpiScoreColor(it.erpiScore) } ?: MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 
                 StatItem(
