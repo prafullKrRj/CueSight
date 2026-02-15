@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,7 +43,7 @@ fun ConnectionScreen(
 
     // Start checking WiFi status
     LaunchedEffect(Unit) {
-        viewModel.checkWifiStatus()
+        viewModel.checkConnection()
     }
 
     Box(
@@ -82,9 +83,8 @@ fun ConnectionScreen(
                     when (state.currentStep) {
                         ConnectionStep.CHECK_WIFI -> CheckWiFiStep(
                             isWifiEnabled = state.isWifiEnabled,
-                            isConnectedToESP32 = state.isConnectedToESP32,
                             isLoading = state.isLoading,
-                            onCheckWifi = { viewModel.checkWifiStatus() }
+                            onCheckWifi = { viewModel.checkConnection() }
                         )
                         ConnectionStep.CONNECT_WIFI -> ConnectWiFiStep(
                             isLoading = state.isLoading,
@@ -106,7 +106,7 @@ fun ConnectionScreen(
             }
 
             // Error message
-            if (state.error != null) {
+            if (state.error != null && state.currentStep != ConnectionStep.SUCCESS) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -195,7 +195,6 @@ fun ProgressIndicators(currentStep: ConnectionStep) {
 @Composable
 fun CheckWiFiStep(
     isWifiEnabled: Boolean,
-    isConnectedToESP32: Boolean,
     isLoading: Boolean,
     onCheckWifi: () -> Unit
 ) {
@@ -211,32 +210,34 @@ fun CheckWiFiStep(
         )
 
         Text(
-            text = "Checking WiFi Status",
+            text = if (isWifiEnabled) "WiFi Enabled" else "Enable WiFi",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
 
         if (isLoading) {
             CircularProgressIndicator()
+            Text("Checking WiFi...", style = MaterialTheme.typography.bodyMedium)
         } else {
-            if (isConnectedToESP32) {
+            if (isWifiEnabled) {
                 Text(
-                    text = "✓ Connected to ESP32_CAM",
-                    color = CueSightColors.Green,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            } else if (isWifiEnabled) {
-                Text(
-                    text = "WiFi is enabled but not connected to ESP32_CAM",
+                    text = "WiFi is enabled. Looking for ESP32_CAM...",
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyMedium
                 )
             } else {
                 Text(
-                    text = "WiFi is disabled. Please enable WiFi to continue.",
+                    text = "Please enable WiFi to continue.",
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyMedium
                 )
+            }
+
+            Button(
+                onClick = onCheckWifi,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isWifiEnabled) "Check Again" else "Check WiFi")
             }
         }
     }
@@ -269,29 +270,87 @@ fun ConnectWiFiStep(
             fontWeight = FontWeight.Bold
         )
 
-        if (needsUserAction) {
+        if (needsUserAction || error != null) {
             Text(
-                text = userActionMessage ?: "Manual action required",
+                text = "Please connect manually:",
                 textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
             )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Network Name:", style = MaterialTheme.typography.labelMedium)
+                    Text("ESP32_CAM_P", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Password:", style = MaterialTheme.typography.labelMedium)
+                    Text("12345678", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+
+            if (error != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (error.contains("permission", ignoreCase = true)) {
+                            Text(
+                                text = "This is normal - the app can still detect the connection.",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Light
+                            )
+                        }
+                    }
+                }
+            }
 
             Button(
                 onClick = onOpenSettings,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Icon(Icons.Default.Settings, null)
+                Spacer(Modifier.width(8.dp))
                 Text("Open WiFi Settings")
             }
 
-            OutlinedButton(
+            Button(
                 onClick = onRetryAfterSettings,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading
             ) {
-                Text("I've Connected")
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (isLoading) "Checking..." else "I'm Connected")
             }
         } else {
             Text(
-                text = "SSID: ESP32_CAM\nPassword: 12345678",
+                text = "Attempting to connect automatically...",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -304,7 +363,7 @@ fun ConnectWiFiStep(
                     onClick = onConnect,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Connect")
+                    Text("Connect to ESP32_CAM")
                 }
             }
         }

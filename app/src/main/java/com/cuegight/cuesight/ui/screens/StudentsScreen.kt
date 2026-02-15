@@ -35,13 +35,14 @@ fun StudentsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Students") },
-                navigationIcon = if (showBackButton) {
-                    {
+                navigationIcon = {
+
+                    if (showBackButton) {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.Default.ArrowBack, "Back")
                         }
                     }
-                } else null
+                }
             )
         },
         floatingActionButton = {

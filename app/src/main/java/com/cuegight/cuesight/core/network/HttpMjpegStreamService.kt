@@ -6,13 +6,15 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
-import java.io.IOException
-import java.io.InputStream
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 /**
  * Service to parse MJPEG stream from ESP32 camera
@@ -23,9 +25,14 @@ class HttpMjpegStreamService {
         private const val TAG = "HttpMjpegStream"
         private const val DEFAULT_ESP32_IP = "192.168.4.1"
         private const val STREAM_PORT = 80
-        private const val BOUNDARY = "--fb"
         private const val CONNECT_TIMEOUT_SECONDS = 10L
         private const val READ_TIMEOUT_SECONDS = 30L
+
+        // JPEG markers
+        private const val JPEG_START_MARKER_1: Byte = 0xFF.toByte()
+        private const val JPEG_START_MARKER_2: Byte = 0xD8.toByte()
+        private const val JPEG_END_MARKER_1: Byte = 0xFF.toByte()
+        private const val JPEG_END_MARKER_2: Byte = 0xD9.toByte()
     }
 
     private val client = OkHttpClient.Builder()
@@ -35,8 +42,7 @@ class HttpMjpegStreamService {
 
     /**
      * Opens MJPEG stream and emits frames as Bitmaps
-     * @param ipAddress ESP32 IP address
-     * @return Flow of Bitmap frames
+     * Uses JPEG marker detection (0xFFD8...0xFFD9) instead of boundary parsing
      */
     fun streamFrames(ipAddress: String = DEFAULT_ESP32_IP): Flow<Bitmap> = flow {
         val url = "http://$ipAddress:$STREAM_PORT/stream"
@@ -51,103 +57,81 @@ class HttpMjpegStreamService {
             
             if (!response.isSuccessful) {
                 Log.e(TAG, "❌ Failed to connect to stream: ${response.code}")
-                throw IOException("Failed to connect: ${response.code}")
+                throw Exception("Failed to connect: ${response.code}")
             }
 
             val inputStream = response.body?.byteStream()
-                ?: throw IOException("No response body")
+                ?: throw Exception("No response body")
 
-            Log.d(TAG, "✅ Connected to MJPEG stream")
-            
-            // Parse multipart stream
-            parseMultipartStream(inputStream) { frameBytes ->
-                // Decode JPEG to Bitmap
-                val bitmap = BitmapFactory.decodeByteArray(frameBytes, 0, frameBytes.size)
-                if (bitmap != null) {
-                    emit(bitmap)
-                } else {
-                    Log.w(TAG, "⚠️ Failed to decode frame")
+            Log.d(TAG, "✅ Connected to MJPEG stream, starting to parse frames...")
+
+            val bufferedStream = BufferedInputStream(inputStream, 8192)
+            val frameBuffer = ByteArrayOutputStream(32768)
+            var frameCount = 0
+            var inFrame = false
+            var prevByte: Byte = 0
+
+            while (coroutineContext.isActive) {
+                val byte = bufferedStream.read()
+                if (byte == -1) {
+                    Log.w(TAG, "⚠️ Stream ended")
+                    break
                 }
+
+                val currentByte = byte.toByte()
+
+                // Detect JPEG start marker (0xFF 0xD8)
+                if (prevByte == JPEG_START_MARKER_1 && currentByte == JPEG_START_MARKER_2) {
+                    if (inFrame) {
+                        // Found start of new frame while already in frame - reset
+                        frameBuffer.reset()
+                    }
+                    inFrame = true
+                    frameBuffer.write(JPEG_START_MARKER_1.toInt())
+                    frameBuffer.write(JPEG_START_MARKER_2.toInt())
+                }
+                // Detect JPEG end marker (0xFF 0xD9)
+                else if (prevByte == JPEG_END_MARKER_1 && currentByte == JPEG_END_MARKER_2 && inFrame) {
+                    frameBuffer.write(JPEG_END_MARKER_2.toInt())
+
+                    // Complete frame received
+                    val jpegData = frameBuffer.toByteArray()
+
+                    try {
+                        val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size)
+                        if (bitmap != null) {
+                            frameCount++
+                            if (frameCount % 30 == 0) {
+                                Log.d(TAG, "📷 Frame $frameCount decoded (${jpegData.size} bytes, ${bitmap.width}x${bitmap.height})")
+                            }
+                            emit(bitmap)
+                        } else {
+                            Log.w(TAG, "⚠️ Failed to decode JPEG frame (${jpegData.size} bytes)")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Error decoding frame: ${e.message}")
+                    }
+
+                    frameBuffer.reset()
+                    inFrame = false
+                }
+                // Accumulate frame data
+                else if (inFrame) {
+                    frameBuffer.write(currentByte.toInt())
+                }
+
+                prevByte = currentByte
             }
+
+            Log.d(TAG, "🛑 Stream ended, total frames: $frameCount")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Stream error: ${e.message}", e)
             throw e
         }
-    }
-
-    /**
-     * Parses MJPEG multipart stream
-     * Format:
-     * --boundary
-     * Content-Type: image/jpeg
-     * Content-Length: XXXX
-     * 
-     * [JPEG data]
-     */
-    private suspend fun parseMultipartStream(
-        inputStream: InputStream,
-        onFrame: suspend (ByteArray) -> Unit
-    ) {
-        withContext(Dispatchers.IO) {
-            val buffer = ByteArray(8192)
-            val frameBuffer = ByteArrayOutputStream()
-            var inFrame = false
-            var contentLength = -1
-            var bytesRead = 0
-
-            try {
-                while (true) {
-                    val read = inputStream.read(buffer)
-                    if (read == -1) break
-
-                    for (i in 0 until read) {
-                        val byte = buffer[i]
-
-                        if (!inFrame) {
-                            // Look for boundary and Content-Length header
-                            frameBuffer.write(byte.toInt())
-                            val line = frameBuffer.toString()
-
-                            if (line.contains("Content-Length:")) {
-                                val lengthStr = line.substringAfter("Content-Length:").trim()
-                                contentLength = lengthStr.substringBefore("\r").substringBefore("\n").trim().toIntOrNull() ?: -1
-                            }
-
-                            // Start of JPEG data (after blank line following headers)
-                            if (line.endsWith("\r\n\r\n") && contentLength > 0) {
-                                frameBuffer.reset()
-                                inFrame = true
-                                bytesRead = 0
-                            }
-                        } else {
-                            // Reading JPEG frame data
-                            frameBuffer.write(byte.toInt())
-                            bytesRead++
-
-                            if (bytesRead >= contentLength) {
-                                // Frame complete
-                                val frameData = frameBuffer.toByteArray()
-                                onFrame(frameData)
-                                
-                                frameBuffer.reset()
-                                inFrame = false
-                                contentLength = -1
-                                bytesRead = 0
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Error parsing stream: ${e.message}", e)
-                throw e
-            }
-        }
-    }
+    }.flowOn(Dispatchers.IO)
 
     /**
      * Test connection to ESP32
-     * @param ipAddress ESP32 IP address
-     * @return true if connection successful
      */
     suspend fun testConnection(ipAddress: String = DEFAULT_ESP32_IP): Boolean {
         return withContext(Dispatchers.IO) {
@@ -160,7 +144,7 @@ class HttpMjpegStreamService {
                 val response = client.newCall(request).execute()
                 val success = response.isSuccessful
                 response.close()
-                
+
                 if (success) {
                     Log.d(TAG, "✅ Connection test successful")
                 } else {

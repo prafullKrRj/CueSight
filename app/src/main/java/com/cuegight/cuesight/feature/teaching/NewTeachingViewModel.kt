@@ -1,6 +1,7 @@
 package com.cuegight.cuesight.feature.teaching
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.core.network.HttpCommandSender
@@ -38,7 +39,8 @@ class NewTeachingViewModel(
     private var sessionStartTime: Long = 0
     private var lastSentEmotion: String? = null
     private val emotionHistory = mutableListOf<EmotionRecord>()
-    
+    private var streamingRequested = false
+
     // MLKit Face Detector
     private val faceDetector by lazy {
         FaceDetection.getClient(
@@ -54,66 +56,75 @@ class NewTeachingViewModel(
     }
 
     fun startSession(studentId: Long, studentName: String) {
+        Log.d("TeachingVM", "🎯 Starting session for: $studentName (ID: $studentId)")
         sessionStartTime = System.currentTimeMillis()
         _state.value = _state.value.copy(
             studentId = studentId,
             studentName = studentName,
             isSessionActive = true
         )
-        startStreaming()
+
+        // DON'T auto-start streaming - wait for user to click "Start Streaming"
+        // startStreaming()
+
+        // Start timer
+        updateSessionTime()
     }
 
     fun startStreaming() {
-        streamingJob?.cancel()
-        streamingJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isStreaming = true, streamError = null)
-            
-            try {
-                streamService.streamFrames()
-                    .catch { e ->
-                        _state.value = _state.value.copy(
-                            streamError = e.message ?: "Stream error",
-                            isStreaming = false
-                        )
-                    }
-                    .collect { bitmap ->
-                        onFrameReceived(bitmap)
-                    }
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    streamError = e.message ?: "Unknown error",
-                    isStreaming = false
-                )
-            }
+        if (streamingRequested && streamingJob?.isActive == true) {
+            Log.d("TeachingVM", "⚠️ Streaming already in progress")
+            return
         }
+
+        streamingRequested = true
+        Log.d("TeachingVM", "📡 Starting WebView stream...")
+
+        // Just set the flag - WebView will be shown and screenshots will be captured
+        _state.value = _state.value.copy(isStreaming = true, streamError = null)
+
+        // Start timer
+        updateSessionTime()
     }
 
-    private fun onFrameReceived(bitmap: Bitmap) {
+    fun onFrameReceived(bitmap: Bitmap) {
+        val currentFrameCount = _state.value.frameCount + 1
+
         _state.value = _state.value.copy(
             currentFrame = bitmap,
-            frameCount = _state.value.frameCount + 1
+            frameCount = currentFrameCount
         )
-        
+
+        // Log every 30 frames
+        if (currentFrameCount % 30 == 0) {
+            Log.d("TeachingVM", "📊 Processed $currentFrameCount frames, detecting emotion...")
+        }
+
         // Detect emotion using MLKit
         viewModelScope.launch {
-            val detectedEmotion = detectEmotion(bitmap)
-            
-            // Only send if emotion changed
-            if (detectedEmotion != lastSentEmotion && detectedEmotion != null) {
-                sendEmotionCommand(detectedEmotion)
-                lastSentEmotion = detectedEmotion
-                
-                // Record emotion (in-memory)
-                emotionHistory.add(EmotionRecord(
-                    emotion = detectedEmotion,
-                    timestamp = System.currentTimeMillis(),
-                    confidence = 0.85f // TODO: Store actual confidence from detection
-                ))
-                
-                _state.value = _state.value.copy(
-                    currentEmotion = detectedEmotion,
-                    emotionCount = emotionHistory.size
-                )
+            try {
+                val detectedEmotion = detectEmotion(bitmap)
+
+                // Only send if emotion changed
+                if (detectedEmotion != lastSentEmotion && detectedEmotion != null) {
+                    Log.d("TeachingVM", "😊 Emotion changed: $lastSentEmotion -> $detectedEmotion")
+                    sendEmotionCommand(detectedEmotion)
+                    lastSentEmotion = detectedEmotion
+
+                    // Record emotion (in-memory)
+                    emotionHistory.add(EmotionRecord(
+                        emotion = detectedEmotion,
+                        timestamp = System.currentTimeMillis(),
+                        confidence = 0.85f
+                    ))
+
+                    _state.value = _state.value.copy(
+                        currentEmotion = detectedEmotion,
+                        emotionCount = emotionHistory.size
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("TeachingVM", "❌ Error detecting emotion: ${e.message}")
             }
         }
     }
@@ -176,6 +187,7 @@ class NewTeachingViewModel(
     }
 
     fun stopStreaming() {
+        streamingRequested = false
         streamingJob?.cancel()
         streamingJob = null
         _state.value = _state.value.copy(isStreaming = false)
@@ -211,10 +223,12 @@ class NewTeachingViewModel(
 
     fun updateSessionTime() {
         viewModelScope.launch {
-            while (_state.value.isSessionActive && !_state.value.isPaused) {
+            while (_state.value.isSessionActive) {
+                if (!_state.value.isPaused) {
+                    val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
+                    _state.value = _state.value.copy(sessionElapsedSeconds = elapsed)
+                }
                 delay(1000)
-                val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
-                _state.value = _state.value.copy(sessionElapsedSeconds = elapsed)
             }
         }
     }

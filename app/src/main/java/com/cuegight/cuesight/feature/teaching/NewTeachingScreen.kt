@@ -1,7 +1,11 @@
 package com.cuegight.cuesight.feature.teaching
 
+import android.graphics.Bitmap
+import android.webkit.WebSettings
+import android.webkit.WebView
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,19 +15,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.cuegight.cuesight.core.util.EmotionMapper
 import com.cuegight.cuesight.ui.theme.CueSightColors
+import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * New Teaching Screen - HTTP streaming with emotion detection
- * Clean, modern UI showing camera feed and detected emotions
+ * New Teaching Screen - WebView streaming with emotion detection
+ * Uses WebView for MJPEG stream (like Test.kt) + screenshot capture for ML
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,11 +40,11 @@ fun NewTeachingScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
 
     // Start session
     LaunchedEffect(Unit) {
         viewModel.startSession(studentId, studentName)
-        viewModel.updateSessionTime()
     }
 
     // Handle navigation
@@ -47,6 +52,24 @@ fun NewTeachingScreen(
         if (state.shouldNavigateBack) {
             onNavigateBack()
             viewModel.onNavigated()
+        }
+    }
+
+    // Capture WebView screenshots periodically when streaming
+    LaunchedEffect(state.isStreaming, webView) {
+        if (state.isStreaming && webView != null) {
+            while (state.isStreaming && !state.isPaused) {
+                try {
+                    // Capture WebView bitmap
+                    val bitmap = captureWebViewBitmap(webView!!)
+                    if (bitmap != null) {
+                        viewModel.onFrameReceived(bitmap)
+                    }
+                } catch (e: Exception) {
+                    // Ignore capture errors
+                }
+                delay(500) // Capture every 500ms (2 FPS for emotion detection)
+            }
         }
     }
 
@@ -69,6 +92,15 @@ fun NewTeachingScreen(
                     }
                 },
                 actions = {
+                    // Connection status indicator
+                    if (state.isStreaming && state.frameCount > 0) {
+                        Icon(
+                            Icons.Default.Wifi,
+                            "Connected",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     if (!state.isPaused && state.isStreaming) {
                         IconButton(onClick = { viewModel.pauseSession() }) {
                             Icon(Icons.Default.Pause, "Pause")
@@ -93,13 +125,40 @@ fun NewTeachingScreen(
             // Session timer
             SessionTimerCard(elapsedSeconds = state.sessionElapsedSeconds)
 
-            // Camera feed
-            CameraFeedCard(
-                frame = state.currentFrame,
+            // WebView Camera feed
+            WebViewCameraFeedCard(
                 isStreaming = state.isStreaming,
                 isPaused = state.isPaused,
-                error = state.streamError
+                frameCount = state.frameCount,
+                onWebViewCreated = { webView = it }
             )
+
+            // START STREAMING BUTTON (only show when not streaming)
+            if (!state.isStreaming && !state.isPaused) {
+                Button(
+                    onClick = { viewModel.startStreaming() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(Icons.Default.PlayArrow, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Start Streaming")
+                }
+            }
+
+            // STOP STREAMING BUTTON (when streaming is active)
+            if (state.isStreaming && state.frameCount > 0) {
+                OutlinedButton(
+                    onClick = { viewModel.stopStreaming() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Stop, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Stop Streaming")
+                }
+            }
 
             // Current emotion display
             CurrentEmotionCard(
@@ -114,30 +173,17 @@ fun NewTeachingScreen(
                 commandsSent = state.commandsSentCount
             )
 
-            // Control buttons
-            if (!state.isStreaming && !state.isPaused) {
-                Button(
-                    onClick = { viewModel.startStreaming() },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Start Streaming")
-                }
-            }
-
-            if (state.isStreaming || state.isPaused) {
-                Button(
-                    onClick = { showEndDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Icon(Icons.Default.Stop, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("End Session")
-                }
+            // End session button
+            Button(
+                onClick = { showEndDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(Icons.Default.Stop, null)
+                Spacer(Modifier.width(8.dp))
+                Text("End Session")
             }
 
             // Error display
@@ -147,19 +193,33 @@ fun NewTeachingScreen(
                         containerColor = MaterialTheme.colorScheme.errorContainer
                     )
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Error,
-                            null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        Text(
-                            state.streamError ?: "",
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Error,
+                                null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                state.streamError ?: "",
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+
+                        Button(
+                            onClick = { viewModel.startStreaming() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("Retry Connection")
+                        }
                     }
                 }
             }
@@ -223,11 +283,11 @@ fun SessionTimerCard(elapsedSeconds: Long) {
 }
 
 @Composable
-fun CameraFeedCard(
-    frame: android.graphics.Bitmap?,
+fun WebViewCameraFeedCard(
     isStreaming: Boolean,
     isPaused: Boolean,
-    error: String?
+    frameCount: Int,
+    onWebViewCreated: (WebView) -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -239,13 +299,51 @@ fun CameraFeedCard(
             contentAlignment = Alignment.Center
         ) {
             when {
-                frame != null -> {
-                    androidx.compose.foundation.Image(
-                        bitmap = frame.asImageBitmap(),
-                        contentDescription = "Camera feed",
+                isStreaming && !isPaused -> {
+                    // WebView showing MJPEG stream
+                    AndroidView(
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
+                        factory = { context ->
+                            WebView(context).apply {
+                                settings.javaScriptEnabled = true
+                                settings.cacheMode = WebSettings.LOAD_NO_CACHE
+                                settings.builtInZoomControls = false
+                                settings.displayZoomControls = false
+                                loadUrl("http://192.168.4.1/stream")
+                                onWebViewCreated(this)
+                            }
+                        }
                     )
+
+                    // Live indicator overlay
+                    if (frameCount > 0) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Live indicator dot
+                                Canvas(modifier = Modifier.size(8.dp)) {
+                                    drawCircle(
+                                        color = Color.Red,
+                                        radius = 4.dp.toPx()
+                                    )
+                                }
+                                Text(
+                                    text = "LIVE • Frame #$frameCount",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
                 isPaused -> {
                     Column(
@@ -261,31 +359,56 @@ fun CameraFeedCard(
                         Text("Session Paused")
                     }
                 }
-                isStreaming -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator()
-                        Text("Waiting for frames...")
-                    }
-                }
                 else -> {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(24.dp)
                     ) {
                         Icon(
                             Icons.Default.Videocam,
                             null,
                             modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                        Text("Ready to stream")
+                        Text(
+                            "Ready to Stream",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            "Click 'Start Streaming' to begin",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Make sure WiFi is connected to ESP32_CAM_P",
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Capture bitmap from WebView for emotion detection
+ */
+private fun captureWebViewBitmap(webView: WebView): Bitmap? {
+    return try {
+        val bitmap = Bitmap.createBitmap(
+            webView.width,
+            webView.height,
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(bitmap)
+        webView.draw(canvas)
+        bitmap
+    } catch (e: Exception) {
+        null
     }
 }
 

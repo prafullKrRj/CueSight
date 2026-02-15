@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cuegight.cuesight.ui.theme.CueSightColors
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,13 +29,13 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },
-                navigationIcon = if (showBackButton) {
-                    {
+                navigationIcon = {
+                    if (showBackButton) {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.Default.ArrowBack, "Back")
                         }
                     }
-                } else null
+                }
             )
         }
     ) { padding ->

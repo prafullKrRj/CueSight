@@ -23,34 +23,46 @@ class ConnectionViewModel(
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
     init {
-        checkInitialState()
+        checkConnection()
     }
 
-    private fun checkInitialState() {
-        _state.value = _state.value.copy(
-            currentStep = ConnectionStep.CHECK_WIFI,
-            isWifiEnabled = connectionManager.isWifiEnabled(),
-            isConnectedToESP32 = connectionManager.isConnectedToESP32()
-        )
-    }
-
-    fun checkWifiStatus() {
+    fun checkConnection() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             
             val isWifiEnabled = connectionManager.isWifiEnabled()
             val isConnectedToESP32 = connectionManager.isConnectedToESP32()
             
-            _state.value = _state.value.copy(
-                isWifiEnabled = isWifiEnabled,
-                isConnectedToESP32 = isConnectedToESP32,
-                currentStep = if (isConnectedToESP32) {
-                    ConnectionStep.TEST_HTTP
-                } else {
-                    ConnectionStep.CONNECT_WIFI
-                },
-                isLoading = false
-            )
+            when {
+                // Already connected to ESP32_CAM - test HTTP
+                isConnectedToESP32 -> {
+                    _state.value = _state.value.copy(
+                        isWifiEnabled = true,
+                        isConnectedToESP32 = true,
+                        currentStep = ConnectionStep.TEST_HTTP,
+                        isLoading = false
+                    )
+                    testHttpConnection()
+                }
+                // WiFi enabled but not connected - show connect screen
+                isWifiEnabled -> {
+                    _state.value = _state.value.copy(
+                        isWifiEnabled = true,
+                        isConnectedToESP32 = false,
+                        currentStep = ConnectionStep.CONNECT_WIFI,
+                        isLoading = false
+                    )
+                }
+                // WiFi disabled - show enable WiFi screen
+                else -> {
+                    _state.value = _state.value.copy(
+                        isWifiEnabled = false,
+                        isConnectedToESP32 = false,
+                        currentStep = ConnectionStep.CHECK_WIFI,
+                        isLoading = false
+                    )
+                }
+            }
         }
     }
 
@@ -63,7 +75,8 @@ class ConnectionViewModel(
                     _state.value = _state.value.copy(
                         isConnectedToESP32 = true,
                         currentStep = ConnectionStep.TEST_HTTP,
-                        isLoading = false
+                        isLoading = false,
+                        needsUserAction = false
                     )
                     testHttpConnection()
                 }
@@ -91,13 +104,43 @@ class ConnectionViewModel(
     fun retryAfterSettings() {
         viewModelScope.launch {
             _state.value = _state.value.copy(
+                isLoading = true,
                 needsUserAction = false,
-                userActionMessage = null
+                userActionMessage = null,
+                error = null
             )
             
-            // Give user time to connect manually
+            // Give Android a moment to finish connecting
             kotlinx.coroutines.delay(1000)
-            checkWifiStatus()
+
+            // Check if now connected to ESP32_CAM
+            val isConnectedToESP32 = connectionManager.isConnectedToESP32()
+            val currentSsid = connectionManager.getCurrentSSID()
+
+            if (isConnectedToESP32) {
+                // Connected! Move to HTTP test
+                _state.value = _state.value.copy(
+                    isConnectedToESP32 = true,
+                    currentStep = ConnectionStep.TEST_HTTP,
+                    isLoading = false
+                )
+                testHttpConnection()
+            } else {
+                // Still not connected - show helpful error
+                val errorMsg = if (currentSsid.isNullOrBlank()) {
+                    "Not connected to any WiFi. Please connect to 'ESP32_CAM_P' and try again."
+                } else {
+                    "Currently connected to '$currentSsid'. Please connect to 'ESP32_CAM_P' and try again."
+                }
+
+                _state.value = _state.value.copy(
+                    error = errorMsg,
+                    isLoading = false,
+                    // Keep user on CONNECT_WIFI step so they can try again
+                    currentStep = ConnectionStep.CONNECT_WIFI,
+                    needsUserAction = true
+                )
+            }
         }
     }
 
@@ -132,7 +175,7 @@ class ConnectionViewModel(
 
     fun retry() {
         _state.value = ConnectionState()
-        checkInitialState()
+        checkConnection()
     }
 
     fun onNavigated() {

@@ -1,18 +1,22 @@
 package com.cuegight.cuesight.core.network
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiConfiguration
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSuggestion
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 
 /**
  * Manages WiFi connection to ESP32_CAM
@@ -21,8 +25,9 @@ import androidx.annotation.RequiresApi
 class ConnectionManager(private val context: Context) {
     companion object {
         private const val TAG = "ConnectionManager"
-        private const val ESP32_SSID = "ESP32_CAM"
+        private const val ESP32_SSID = "ESP32_CAM_P"
         private const val ESP32_PASSWORD = "12345678"
+        private const val ESP32_IP = "192.168.4.1" // Default ESP32 AP IP
     }
 
     private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -138,22 +143,115 @@ class ConnectionManager(private val context: Context) {
 
     /**
      * Check if currently connected to ESP32_CAM
+     * Uses multiple methods to detect connection
      */
     fun isConnectedToESP32(): Boolean {
+        // Method 1: Try to get SSID directly
         val wifiInfo = wifiManager.connectionInfo
-        val ssid = wifiInfo.ssid.removeSurrounding("\"")
-        val isConnected = ssid == ESP32_SSID
-        
-        Log.d(TAG, "WiFi Status: SSID=$ssid, Connected to ESP32=$isConnected")
-        return isConnected
+        val rawSsid = wifiInfo.ssid
+        val ssid = rawSsid?.removeSurrounding("\"")?.trim() ?: ""
+
+        Log.d(TAG, "WiFi Status Check:")
+        Log.d(TAG, "  Raw SSID: $rawSsid")
+        Log.d(TAG, "  Cleaned SSID: '$ssid'")
+        Log.d(TAG, "  Expected SSID: '$ESP32_SSID'")
+
+        // Check if SSID matches (case-insensitive)
+        if (ssid.isNotEmpty() && !ssid.equals("<unknown ssid>", ignoreCase = true)) {
+            val isConnected = ssid.equals(ESP32_SSID, ignoreCase = true)
+            Log.d(TAG, "  Connected via SSID match: $isConnected")
+            return isConnected
+        }
+
+        // Method 2: Check if we have location permission (required for SSID on Android 10+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasLocationPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasLocationPermission) {
+                Log.w(TAG, "  ⚠️ Location permission not granted, SSID will show as <unknown ssid>")
+                // Try alternative method using network capabilities
+                return isConnectedToESP32ViaNetworkInfo()
+            }
+        }
+
+        // Method 3: Check connection via network capabilities
+        return isConnectedToESP32ViaNetworkInfo()
+    }
+
+    /**
+     * Alternative method to check ESP32 connection using network info
+     * Checks if connected to a WiFi network without internet (typical for ESP32 AP mode)
+     */
+    private fun isConnectedToESP32ViaNetworkInfo(): Boolean {
+        try {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+
+            // Check if connected to WiFi
+            val isWifi = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+
+            // ESP32 AP typically doesn't have internet
+            val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                             networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+
+            val isProbablyESP32 = isWifi && !hasInternet
+
+            Log.d(TAG, "  Network Capabilities Check:")
+            Log.d(TAG, "    Is WiFi: $isWifi")
+            Log.d(TAG, "    Has Internet: $hasInternet")
+            Log.d(TAG, "    Probably ESP32: $isProbablyESP32")
+
+            return isProbablyESP32
+        } catch (e: Exception) {
+            Log.e(TAG, "  Error checking network capabilities: ${e.message}")
+            return false
+        }
     }
 
     /**
      * Get current WiFi SSID
+     * Returns null if unable to determine
      */
     fun getCurrentSSID(): String? {
         val wifiInfo = wifiManager.connectionInfo
-        return wifiInfo.ssid?.removeSurrounding("\"")
+        val rawSsid = wifiInfo.ssid?.removeSurrounding("\"")?.trim()
+
+        // Don't return "<unknown ssid>" as a valid SSID
+        return if (rawSsid.isNullOrEmpty() || rawSsid.equals("<unknown ssid>", ignoreCase = true)) {
+            // Try to get info from network capabilities
+            val activeNetwork = connectivityManager.activeNetwork
+            val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+
+            if (networkCapabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
+                val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                if (!hasInternet) {
+                    "WiFi network (permission required to see name)"
+                } else {
+                    "WiFi network"
+                }
+            } else {
+                null
+            }
+        } else {
+            rawSsid
+        }
+    }
+
+    /**
+     * Check if location permission is granted (needed for SSID access on Android 10+)
+     */
+    fun hasLocationPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Not needed on older versions
+        }
     }
 
     /**

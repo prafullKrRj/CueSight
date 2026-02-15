@@ -9,7 +9,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.feature.analytics.AnalyticsScreen
 import com.cuegight.cuesight.feature.connection.ConnectionScreen
 import com.cuegight.cuesight.feature.practice.NewPracticeScreen
@@ -18,14 +17,10 @@ import com.cuegight.cuesight.feature.teaching.NewTeachingScreen
 import com.cuegight.cuesight.navigation.Screen
 import com.cuegight.cuesight.ui.components.BottomNavTab
 import com.cuegight.cuesight.ui.screens.AddStudentScreen
-import com.cuegight.cuesight.ui.screens.EntryScreen
 import com.cuegight.cuesight.ui.screens.MainScreen
 import com.cuegight.cuesight.ui.screens.SettingsScreen
 import com.cuegight.cuesight.ui.screens.StudentDetailScreen
 import com.cuegight.cuesight.ui.screens.StudentsScreen
-import com.cuegight.cuesight.ui.screens.developer.DeveloperTestScreen
-import com.cuegight.cuesight.ui.screens.practice.PracticeSessionScreen
-import com.cuegight.cuesight.ui.screens.teaching.TeachingSessionScreen
 import com.cuegight.cuesight.ui.theme.CueSightTheme
 
 class MainActivity : ComponentActivity() {
@@ -48,7 +43,10 @@ fun CueSightApp() {
         navController = navController,
         startDestination = Screen.Splash.route
     ) {
-        // New flow
+        // ═══════════════════════════════════════════════════════
+        // SPLASH & CONNECTION FLOW
+        // ═══════════════════════════════════════════════════════
+
         composable(Screen.Splash.route) {
             SplashScreen(
                 onNavigateToConnection = {
@@ -69,7 +67,10 @@ fun CueSightApp() {
             )
         }
         
-        // Main screen with bottom navigation
+        // ═══════════════════════════════════════════════════════
+        // MAIN APP (with Bottom Navigation)
+        // ═══════════════════════════════════════════════════════
+
         composable("main") {
             MainScreen(
                 navController = navController,
@@ -77,52 +78,10 @@ fun CueSightApp() {
             )
         }
         
-        // New HTTP-based session screens
-        composable(
-            route = Screen.NewTeachingSession.route,
-            arguments = listOf(
-                navArgument("studentId") { type = NavType.LongType },
-                navArgument("studentName") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
-            val studentName = backStackEntry.arguments?.getString("studentName") ?: ""
-            NewTeachingScreen(
-                studentId = studentId,
-                studentName = studentName,
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-        
-        composable(
-            route = Screen.NewPracticeSession.route,
-            arguments = listOf(
-                navArgument("studentId") { type = NavType.LongType },
-                navArgument("studentName") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
-            val studentName = backStackEntry.arguments?.getString("studentName") ?: ""
-            NewPracticeScreen(
-                studentId = studentId,
-                studentName = studentName,
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-        
-        // Legacy entry screen (for backwards compatibility during transition)
-        composable(Screen.Entry.route) {
-            EntryScreen(
-                onNavigateToStudentEntry = {
-                    navController.navigate("main")
-                },
-                onNavigateToDeveloperTest = {
-                    navController.navigate(Screen.DeveloperTest.route)
-                }
-            )
-        }
-        
-        // Individual screens (for navigation from main screen)
+        // ═══════════════════════════════════════════════════════
+        // STUDENT MANAGEMENT
+        // ═══════════════════════════════════════════════════════
+
         composable(Screen.Students.route) {
             StudentsScreen(
                 onNavigateBack = { navController.popBackStack() },
@@ -149,58 +108,76 @@ fun CueSightApp() {
             StudentDetailScreen(
                 studentId = studentId,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToSession = { id, mode ->
-                    val route = if (mode == SessionMode.TEACHING.name) {
-                        Screen.TeachingSession.createRoute(id)
-                    } else {
-                        Screen.PracticeSession.createRoute(id)
+                onNavigateToSession = { id, name, mode ->
+                    // Navigate to NEW HTTP-based screens
+                    val route = when (mode) {
+                        "TEACHING" -> Screen.NewTeachingSession.createRoute(id, name)
+                        "PRACTICE" -> Screen.NewPracticeSession.createRoute(id, name)
+                        else -> return@StudentDetailScreen
                     }
                     navController.navigate(route)
                 }
             )
         }
         
+        // ═══════════════════════════════════════════════════════
+        // NEW HTTP-BASED SESSION SCREENS (ONLY THESE!)
+        // ═══════════════════════════════════════════════════════
+
         composable(
-            route = Screen.TeachingSession.route,
-            arguments = listOf(navArgument("studentId") { type = NavType.LongType })
+            route = Screen.NewTeachingSession.route,
+            arguments = listOf(
+                navArgument("studentId") { type = NavType.LongType },
+                navArgument("studentName") { type = NavType.StringType }
+            )
         ) { backStackEntry ->
             val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
-            TeachingSessionScreen(
+            val studentName = backStackEntry.arguments?.getString("studentName") ?: ""
+
+            NewTeachingScreen(
                 studentId = studentId,
-                onNavigateBack = { navController.popBackStack() }
+                studentName = studentName,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
             )
         }
 
         composable(
-            route = Screen.PracticeSession.route,
-            arguments = listOf(navArgument("studentId") { type = NavType.LongType })
+            route = Screen.NewPracticeSession.route,
+            arguments = listOf(
+                navArgument("studentId") { type = NavType.LongType },
+                navArgument("studentName") { type = NavType.StringType }
+            )
         ) { backStackEntry ->
             val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
-            PracticeSessionScreen(
-                studentId = studentId,
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
+            val studentName = backStackEntry.arguments?.getString("studentName") ?: ""
 
-        composable(Screen.DeveloperTest.route) {
-            DeveloperTestScreen(
-                onNavigateBack = { navController.popBackStack() }
+            NewPracticeScreen(
+                studentId = studentId,
+                studentName = studentName,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
             )
         }
         
-        composable(Screen.Settings.route) {
-            SettingsScreen(
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-        
-        // Analytics route (for standalone access)
+        // ═══════════════════════════════════════════════════════
+        // ANALYTICS & SETTINGS
+        // ═══════════════════════════════════════════════════════
+
         composable(Screen.Analytics.route) {
             AnalyticsScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToStudentAnalytics = { studentId ->
                     navController.navigate(Screen.StudentDetail.createRoute(studentId))
                 }
+            )
+        }
+
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }

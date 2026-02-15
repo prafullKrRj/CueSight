@@ -24,7 +24,7 @@ private const val AVERAGE_FORMAT = "%.1f"
 fun StudentDetailScreen(
     studentId: Long,
     onNavigateBack: () -> Unit,
-    onNavigateToSession: (Long, String) -> Unit,
+    onNavigateToSession: (Long, String, String) -> Unit,
     viewModel: StudentViewModel = koinViewModel()
 ) {
     val student by viewModel.getStudentById(studentId).collectAsState(initial = null)
@@ -254,7 +254,7 @@ fun StudentDetailScreen(
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(
-                                onClick = { onNavigateToSession(studentId, SessionMode.TEACHING.name) },
+                                onClick = { onNavigateToSession(studentId, student?.name ?: "", SessionMode.TEACHING.name) },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
@@ -307,7 +307,7 @@ fun StudentDetailScreen(
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(
-                                onClick = { onNavigateToSession(studentId, SessionMode.PRACTICE.name) },
+                                onClick = { onNavigateToSession(studentId, student?.name ?: "", SessionMode.PRACTICE.name) },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondary
