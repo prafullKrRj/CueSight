@@ -13,7 +13,6 @@ import com.cuegight.cuesight.data.repository.StudentRepository
 import com.cuegight.cuesight.feature.practice.data.entity.PracticeGuess
 import com.cuegight.cuesight.feature.practice.data.entity.PracticeSession
 import com.cuegight.cuesight.feature.practice.data.repository.PracticeRepository
-import com.cuegight.cuesight.feature.practice.domain.engine.ErpfEngine
 import com.cuegight.cuesight.feature.practice.domain.model.CwaResult
 import com.cuegight.cuesight.feature.practice.domain.model.ErpiResult
 import com.cuegight.cuesight.feature.practice.domain.model.MasteryResult
@@ -40,8 +39,7 @@ import kotlin.math.abs
 class StudentAnalyticsViewModel(
     private val studentId: Long,
     private val studentRepository: StudentRepository,
-    private val practiceRepository: PracticeRepository,
-    private val erpfEngine: ErpfEngine
+    private val practiceRepository: PracticeRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(StudentAnalyticsState())

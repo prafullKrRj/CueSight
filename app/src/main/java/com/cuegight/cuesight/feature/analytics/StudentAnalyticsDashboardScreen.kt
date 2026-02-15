@@ -214,7 +214,7 @@ private fun StudentAnalyticsContent(
                         Spacer(Modifier.height(16.dp))
                         
                         // Professional line chart
-                        VicoLearningCurveChart(
+                        LearningCurveChart(
                             accuracies = state.sessionAccuracies,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -960,7 +960,7 @@ private fun ResponseTimeCardEnhanced(
             Spacer(Modifier.height(16.dp))
             
             // Professional column chart
-            VicoResponseTimeChart(
+            ResponseTimeChart(
                 distribution = distribution,
                 modifier = Modifier.fillMaxWidth()
             )
