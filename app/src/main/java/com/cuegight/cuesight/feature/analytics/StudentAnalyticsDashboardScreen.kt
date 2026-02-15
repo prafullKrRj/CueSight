@@ -188,20 +188,20 @@ private fun StudentAnalyticsContent(
             }
         }
         
-        // Confusion Matrix
+        // Confusion Matrix with enhanced heatmap
         if (state.confusionMatrix.isNotEmpty()) {
             item {
-                ConfusionMatrixCard(
+                ConfusionMatrixCardEnhanced(
                     confusionMatrix = state.confusionMatrix,
                     mostConfusedPairs = state.mostConfusedPairs
                 )
             }
         }
         
-        // Response Time Distribution
+        // Response Time Distribution with histogram
         if (state.responseTimeDistribution.isNotEmpty()) {
             item {
-                ResponseTimeCard(
+                ResponseTimeCardEnhanced(
                     distribution = state.responseTimeDistribution,
                     averageResponseTime = state.averageResponseTime,
                     fastestTime = state.fastestResponseTime,
@@ -404,15 +404,29 @@ private fun LearningTrajectoryCard(erpiResult: ErpiResult) {
                 )
             }
             Spacer(Modifier.height(16.dp))
+            
+            Text(
+                text = "ERPI Score: %.3f".format(erpiResult.erpiScore),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = when {
+                    erpiResult.erpiScore > 0.0f -> Color(0xFF4CAF50)
+                    erpiResult.erpiScore > -0.1f -> Color(0xFFFF9800)
+                    else -> Color(0xFFF44336)
+                }
+            )
+            Spacer(Modifier.height(8.dp))
+            
             Text(
                 text = erpiResult.interpretation,
                 style = MaterialTheme.typography.bodyLarge
             )
             Spacer(Modifier.height(8.dp))
+            
             Text(
-                text = "ERPI Score: %.3f".format(erpiResult.erpiScore),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                text = "Improvement rate: %.4f per session".format(erpiResult.slope),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
     }
@@ -439,10 +453,40 @@ private fun EmotionMasteryCard(masteryResult: MasteryResult) {
             )
             Spacer(Modifier.height(16.dp))
             
-            // Show per-emotion mastery bars
-            masteryResult.perEmotionScores.forEach { (emotion, score) ->
-                EmotionMasteryBar(emotion = emotion, mastery = score)
-                Spacer(Modifier.height(8.dp))
+            // Display mastery rings in a grid
+            val emotions = masteryResult.perEmotionScores.toList()
+            emotions.chunked(3).forEach { rowEmotions ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    rowEmotions.forEach { (emotion, score) ->
+                        MasteryRing(
+                            mastery = score,
+                            emotion = emotion,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                    // Fill remaining spaces if not divisible by 3
+                    repeat(3 - rowEmotions.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("Strongest:", style = MaterialTheme.typography.bodySmall)
+                    Text(masteryResult.strongestEmotion, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Weakest:", style = MaterialTheme.typography.bodySmall)
+                    Text(masteryResult.weakestEmotion, fontWeight = FontWeight.Bold, color = Color(0xFFF44336))
+                }
             }
         }
     }
@@ -781,6 +825,105 @@ private fun ExportDataDialog(
             }
         }
     )
+}
+
+// Enhanced card components using AnalyticsComponents
+
+@Composable
+private fun ConfusionMatrixCardEnhanced(
+    confusionMatrix: Map<String, Map<String, Int>>,
+    mostConfusedPairs: List<Pair<String, String>>
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.GridOn, null, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "Confusion Matrix",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            
+            // Enhanced heatmap
+            ConfusionMatrixHeatmap(
+                confusionMatrix = confusionMatrix,
+                emotions = confusionMatrix.keys.sorted(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Text(
+                text = "Most confused pairs:",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            mostConfusedPairs.take(3).forEach { (actual, guessed) ->
+                Text(
+                    text = "• Confuses $actual with $guessed",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResponseTimeCardEnhanced(
+    distribution: Map<String, Int>,
+    averageResponseTime: Long,
+    fastestTime: Long,
+    slowestTime: Long
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Timer, null, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "Response Times",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                AnimatedStatCard(
+                    value = "${averageResponseTime}ms",
+                    label = "Average",
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                AnimatedStatCard(
+                    value = "${fastestTime}ms",
+                    label = "Fastest",
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                AnimatedStatCard(
+                    value = "${slowestTime}ms",
+                    label = "Slowest",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Histogram
+            ResponseTimeHistogram(
+                distribution = distribution,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
 }
 
 // Data classes for UI state
