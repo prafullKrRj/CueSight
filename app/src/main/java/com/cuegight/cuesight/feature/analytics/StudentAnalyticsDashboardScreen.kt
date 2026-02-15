@@ -47,7 +47,7 @@ fun StudentAnalyticsDashboardScreen(
             currentWeights = state.cwaResult!!.weights,
             onDismiss = { showWeightDialog = false },
             onSave = { weights ->
-                kotlinx.coroutines.launch(scope.coroutineContext) {
+                scope.launch {
                     val success = viewModel.updateTherapistWeights(weights)
                     if (success) {
                         Toast.makeText(context, "Weights updated successfully", Toast.LENGTH_SHORT).show()
@@ -129,7 +129,7 @@ fun StudentAnalyticsDashboardScreen(
         ExportDataDialog(
             onDismiss = { showExportDialog = false },
             onExport = { format ->
-                kotlinx.coroutines.launch(scope.coroutineContext) {
+                scope.launch {
                     val uri = viewModel.exportData(context, format)
                     if (uri != null) {
                         Toast.makeText(context, "Exported to Downloads", Toast.LENGTH_LONG).show()

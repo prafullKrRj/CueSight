@@ -198,7 +198,7 @@ class StudentAnalyticsViewModel(
         )
     }
 
-    private fun computeCwa(guesses: List<PracticeGuess>): CwaResult? {
+    private suspend fun computeCwa(guesses: List<PracticeGuess>): CwaResult? {
         if (guesses.isEmpty()) return null
 
         val emotions = guesses.map { it.teacherEmotion }.distinct()
@@ -216,20 +216,23 @@ class StudentAnalyticsViewModel(
             recalls[emotion] = if (total > 0) tp.toFloat() / total else 0f
         }
 
-        // Get therapist weights (or use default equal weights)
-        val weights = viewModelScope.launch(Dispatchers.IO) {
-            val therapistWeights = practiceRepository.getWeights()
-            therapistWeights.associate { it.emotion to it.weight }
+        // Get therapist weights from database
+        val therapistWeights = withContext(Dispatchers.IO) {
+            practiceRepository.getWeights()
         }
-
-        // For now, use equal weights (will be replaced with actual therapist weights)
-        val equalWeight = 1.0f / emotions.size
-        val weightMap = emotions.associateWith { equalWeight }
+        
+        // Create weight map from therapist weights, or use equal weights as fallback
+        val weightMap = if (therapistWeights.isNotEmpty()) {
+            therapistWeights.associate { it.emotion to it.weight }
+        } else {
+            val equalWeight = 1.0f / emotions.size
+            emotions.associateWith { equalWeight }
+        }
 
         // Compute CWA: sum(weight * recall)
         var cwaScore = 0f
         for (emotion in emotions) {
-            val weight = weightMap[emotion] ?: equalWeight
+            val weight = weightMap[emotion] ?: (1.0f / emotions.size)
             val recall = recalls[emotion] ?: 0f
             cwaScore += weight * recall
         }

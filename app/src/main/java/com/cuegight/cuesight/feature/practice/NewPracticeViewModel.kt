@@ -35,6 +35,7 @@ class NewPracticeViewModel(
 
     private var sessionStartTime: Long = 0
     private var sessionId: String = ""
+    private var roundStartTime: Long = 0 // Track when teacher selects emotion
     private val roundHistory = mutableListOf<PracticeRound>()
 
     fun startSession(studentId: Long, studentName: String) {
@@ -78,6 +79,7 @@ class NewPracticeViewModel(
     }
 
     fun onTeacherEmotionSelected(emotion: String) {
+        roundStartTime = System.currentTimeMillis() // Track round start time
         _state.value = _state.value.copy(
             teacherEmotion = emotion,
             currentStep = PracticeStep.WAITING_FOR_STUDENT
@@ -99,7 +101,8 @@ class NewPracticeViewModel(
             val teacherEmotion = _state.value.teacherEmotion ?: return@launch
             val studentGuess = _state.value.studentGuess ?: return@launch
             
-            val roundStartTime = System.currentTimeMillis()
+            val guessTimestamp = System.currentTimeMillis()
+            val responseTime = guessTimestamp - roundStartTime // Calculate actual response time
             val isCorrect = teacherEmotion.equals(studentGuess, ignoreCase = true)
             
             _state.value = _state.value.copy(
@@ -135,16 +138,15 @@ class NewPracticeViewModel(
                 teacherEmotion = teacherEmotion,
                 studentGuess = studentGuess,
                 isCorrect = isCorrect,
-                timestamp = roundStartTime
+                timestamp = guessTimestamp
             ))
             
-            // Save guess to database with response time
-            val responseTime = System.currentTimeMillis() - roundStartTime
+            // Save guess to database with correct response time
             launch(Dispatchers.IO) {
                 practiceRepository.insertGuess(
                     PracticeGuess(
                         sessionId = sessionId,
-                        timestamp = roundStartTime,
+                        timestamp = guessTimestamp,
                         teacherEmotion = teacherEmotion,
                         userGuess = studentGuess,
                         isCorrect = isCorrect,
