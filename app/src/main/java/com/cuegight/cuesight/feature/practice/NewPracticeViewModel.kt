@@ -5,11 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.core.network.HttpCommandSender
 import com.cuegight.cuesight.core.network.PracticeCommandType
 import com.cuegight.cuesight.core.util.EmotionMapper
+import com.cuegight.cuesight.feature.practice.data.entity.PracticeGuess
+import com.cuegight.cuesight.feature.practice.data.entity.PracticeSession
+import com.cuegight.cuesight.feature.practice.data.repository.PracticeRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import java.util.UUID
 
 /**
  * New Practice Mode ViewModel - Teacher-controlled feedback
@@ -18,27 +23,41 @@ import kotlinx.coroutines.launch
  * - Teacher selects: "Which emotion did you show?"
  * - Teacher selects: "What did student guess?"
  * - Compares and sends feedback to ESP32
- * - Tracks in-memory session stats
- * - NO database logging
+ * - Tracks session stats and saves to database
  */
 class NewPracticeViewModel(
-    private val commandSender: HttpCommandSender
+    private val commandSender: HttpCommandSender,
+    private val practiceRepository: PracticeRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PracticeState())
     val state: StateFlow<PracticeState> = _state.asStateFlow()
 
     private var sessionStartTime: Long = 0
+    private var sessionId: String = ""
     private val roundHistory = mutableListOf<PracticeRound>()
 
     fun startSession(studentId: Long, studentName: String) {
         sessionStartTime = System.currentTimeMillis()
+        sessionId = UUID.randomUUID().toString()
+        
         _state.value = _state.value.copy(
             studentId = studentId,
             studentName = studentName,
             isSessionActive = true,
             currentStep = PracticeStep.WAITING_FOR_TEACHER
         )
+        
+        // Save session to database
+        viewModelScope.launch(Dispatchers.IO) {
+            practiceRepository.insertSession(
+                PracticeSession(
+                    sessionId = sessionId,
+                    studentId = studentId,
+                    startTime = sessionStartTime
+                )
+            )
+        }
         
         // Send "?" to OLED to start
         sendQuestionCommand()
@@ -80,6 +99,7 @@ class NewPracticeViewModel(
             val teacherEmotion = _state.value.teacherEmotion ?: return@launch
             val studentGuess = _state.value.studentGuess ?: return@launch
             
+            val roundStartTime = System.currentTimeMillis()
             val isCorrect = teacherEmotion.equals(studentGuess, ignoreCase = true)
             
             _state.value = _state.value.copy(
@@ -115,8 +135,23 @@ class NewPracticeViewModel(
                 teacherEmotion = teacherEmotion,
                 studentGuess = studentGuess,
                 isCorrect = isCorrect,
-                timestamp = System.currentTimeMillis()
+                timestamp = roundStartTime
             ))
+            
+            // Save guess to database with response time
+            val responseTime = System.currentTimeMillis() - roundStartTime
+            launch(Dispatchers.IO) {
+                practiceRepository.insertGuess(
+                    PracticeGuess(
+                        sessionId = sessionId,
+                        timestamp = roundStartTime,
+                        teacherEmotion = teacherEmotion,
+                        userGuess = studentGuess,
+                        isCorrect = isCorrect,
+                        responseTimeMs = responseTime
+                    )
+                )
+            }
             
             // Auto-proceed to next round after 3 seconds
             delay(3000)
@@ -138,14 +173,31 @@ class NewPracticeViewModel(
 
     fun endSession() {
         val sessionDuration = System.currentTimeMillis() - sessionStartTime
+        val accuracy = if (_state.value.totalCount > 0) {
+            (_state.value.correctCount.toFloat() / _state.value.totalCount.toFloat()) * 100f
+        } else 0f
+        
         val sessionStats = PracticeSessionStats(
             durationMs = sessionDuration,
             totalRounds = _state.value.totalCount,
             correctAnswers = _state.value.correctCount,
-            accuracy = if (_state.value.totalCount > 0) {
-                (_state.value.correctCount.toFloat() / _state.value.totalCount.toFloat()) * 100f
-            } else 0f
+            accuracy = accuracy
         )
+        
+        // Update session in database with final stats
+        viewModelScope.launch(Dispatchers.IO) {
+            practiceRepository.updateSession(
+                PracticeSession(
+                    sessionId = sessionId,
+                    studentId = _state.value.studentId,
+                    startTime = sessionStartTime,
+                    endTime = System.currentTimeMillis(),
+                    totalGuesses = _state.value.totalCount,
+                    correctGuesses = _state.value.correctCount,
+                    sessionAccuracy = accuracy / 100f // Convert to 0-1 range
+                )
+            )
+        }
         
         _state.value = _state.value.copy(
             isSessionActive = false,

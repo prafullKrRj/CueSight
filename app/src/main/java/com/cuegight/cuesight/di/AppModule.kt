@@ -48,10 +48,10 @@ val appModule = module {
     viewModel { PracticeViewModel(get(), get(), get()) }
     viewModel { TestViewModel(get()) }
     
-    // ViewModels - New HTTP-based (no database logging)
+    // ViewModels - New HTTP-based
     viewModel { ConnectionViewModel(get(), get()) }
     viewModel { NewTeachingViewModel(get(), get()) }
-    viewModel { NewPracticeViewModel(get()) }
+    viewModel { NewPracticeViewModel(get(), get()) } // Now with database logging
     viewModel { AnalyticsViewModel(get(), get()) }
     viewModel { (studentId: Long) -> 
         StudentAnalyticsViewModel(studentId, get(), get(), get())
