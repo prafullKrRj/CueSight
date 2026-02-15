@@ -215,12 +215,17 @@ class NewPracticeViewModel(
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
+    
+    fun togglePause() {
+        _state.value = _state.value.copy(isPaused = !_state.value.isPaused)
+    }
 }
 
 data class PracticeState(
     val studentId: Long = 0,
     val studentName: String = "",
     val isSessionActive: Boolean = false,
+    val isPaused: Boolean = false,
     val currentStep: PracticeStep = PracticeStep.WAITING_FOR_TEACHER,
     val teacherEmotion: String? = null,
     val studentGuess: String? = null,

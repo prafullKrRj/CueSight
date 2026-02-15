@@ -78,7 +78,11 @@ fun NewTeachingScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Teaching Mode", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "Teaching Mode",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
                         Text(
                             studentName,
                             style = MaterialTheme.typography.bodyMedium,
@@ -87,8 +91,23 @@ fun NewTeachingScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { showEndDialog = true }) {
-                        Icon(Icons.Default.Close, "End session")
+                    IconButton(
+                        onClick = {
+                            if (state.isPaused) {
+                                viewModel.resumeSession()
+                            } else {
+                                viewModel.pauseSession()
+                            }
+                        },
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(48.dp)
+                    ) {
+                        Icon(
+                            if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            if (state.isPaused) "Resume" else "Pause",
+                            modifier = Modifier.size(32.dp)
+                        )
                     }
                 },
                 actions = {
@@ -97,7 +116,30 @@ fun NewTeachingScreen(
                         Icon(
                             Icons.Default.Wifi,
                             "Connected",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = CueSightColors.Green,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
+                    
+                    Button(
+                        onClick = { showEndDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("End Session", fontWeight = FontWeight.Bold)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            )
+        }
                         )
                     }
 
@@ -230,26 +272,82 @@ fun NewTeachingScreen(
     if (showEndDialog) {
         AlertDialog(
             onDismissRequest = { showEndDialog = false },
-            title = { Text("End Teaching Session?") },
+            icon = {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    "End Teaching Session?",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
-                Column {
-                    Text("Session Summary:")
-                    Text("Duration: ${formatDuration(state.sessionElapsedSeconds)}")
-                    Text("Emotions detected: ${state.emotionCount}")
-                    Text("Commands sent: ${state.commandsSentCount}")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Session Summary",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                formatDuration(state.sessionElapsedSeconds),
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text("Duration", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "${state.emotionCount}",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = CueSightColors.Green
+                            )
+                            Text("Emotions", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "${state.commandsSentCount}",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("Commands", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    showEndDialog = false
-                    viewModel.endSession()
-                }) {
-                    Text("End Session")
+                Button(
+                    onClick = {
+                        showEndDialog = false
+                        viewModel.endSession()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("End Session", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showEndDialog = false }) {
-                    Text("Cancel")
+                OutlinedButton(onClick = { showEndDialog = false }) {
+                    Text("Continue")
                 }
             }
         )
