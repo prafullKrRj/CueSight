@@ -1,13 +1,54 @@
 package com.cuegight.cuesight.feature.analytics
 
 import android.widget.Toast
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -15,6 +56,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cuegight.cuesight.data.model.Student
+import com.cuegight.cuesight.feature.practice.domain.model.CwaResult
+import com.cuegight.cuesight.feature.practice.domain.model.ErpiResult
+import com.cuegight.cuesight.feature.practice.domain.model.MasteryResult
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -495,28 +540,14 @@ private fun EmotionMasteryCard(masteryResult: MasteryResult) {
             )
             Spacer(Modifier.height(16.dp))
             
-            // Display mastery rings in a grid
-            val emotions = masteryResult.perEmotionScores.toList()
-            emotions.chunked(3).forEach { rowEmotions ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    rowEmotions.forEach { (emotion, score) ->
-                        MasteryRing(
-                            mastery = score,
-                            emotion = emotion,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-                    // Fill remaining spaces if not divisible by 3
-                    repeat(3 - rowEmotions.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-            }
-            
+            // Professional bar chart instead of mastery rings
+            EmotionAccuracyChart(
+                emotionScores = masteryResult.perEmotionScores,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(16.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -531,28 +562,6 @@ private fun EmotionMasteryCard(masteryResult: MasteryResult) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun EmotionMasteryBar(emotion: String, mastery: Float) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(emotion, style = MaterialTheme.typography.bodyMedium)
-            Text("${(mastery * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-        }
-        LinearProgressIndicator(
-            progress = { mastery },
-            modifier = Modifier.fillMaxWidth().height(8.dp),
-            color = when {
-                mastery >= 0.8f -> Color(0xFF4CAF50)
-                mastery >= 0.6f -> Color(0xFFFF9800)
-                else -> Color(0xFFF44336)
-            },
-        )
     }
 }
 

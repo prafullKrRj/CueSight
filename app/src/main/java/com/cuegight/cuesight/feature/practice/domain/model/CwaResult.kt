@@ -6,4 +6,3 @@ data class CwaResult(
     val perClassRecall: Map<String, Float>,
     val weights: Map<String, Float>
 )
-

@@ -48,7 +48,7 @@ fun MainScreen(
                 AnalyticsScreen(
                     onNavigateBack = { }, // No back button when in bottom nav
                     onNavigateToStudentAnalytics = { studentId ->
-                        navController.navigate("student_detail/$studentId")
+                        navController.navigate("student_analytics/$studentId")
                     },
                     showBackButton = false,
                     modifier = Modifier.padding(paddingValues)

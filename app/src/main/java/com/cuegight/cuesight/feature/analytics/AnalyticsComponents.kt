@@ -5,23 +5,21 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlin.math.min
 
 /**
- * Enhanced visualization components for analytics dashboard
+ * Unique visualization components for analytics dashboard
+ * Charts are in AnalyticsCharts.kt
  */
 
 /**
@@ -169,129 +167,6 @@ fun ConfusionMatrixHeatmap(
 }
 
 /**
- * Response Time Histogram
- */
-@Composable
-fun ResponseTimeHistogram(
-    distribution: Map<String, Int>,
-    modifier: Modifier = Modifier
-) {
-    val buckets = listOf("< 1s", "1-3s", "3-5s", "> 5s")
-    val maxCount = distribution.values.maxOrNull() ?: 1
-    
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        buckets.forEach { bucket ->
-            val count = distribution[bucket] ?: 0
-            val progress = if (maxCount > 0) count.toFloat() / maxCount else 0f
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = bucket,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.width(50.dp)
-                )
-                
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(32.dp)
-                ) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxSize().clip(MaterialTheme.shapes.small),
-                        color = getResponseTimeColor(bucket),
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                    
-                    if (count > 0) {
-                        Text(
-                            text = count.toString(),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(horizontal = 8.dp),
-                            color = if (progress > 0.3f) Color.White else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Learning Curve Chart (Simplified line chart)
- */
-@Composable
-fun LearningCurveChart(
-    accuracies: List<Float>,
-    modifier: Modifier = Modifier
-) {
-    if (accuracies.isEmpty()) return
-    
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Chart area
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    MaterialTheme.shapes.medium
-                )
-                .padding(16.dp)
-        ) {
-            // Simple visualization showing trend
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                accuracies.forEach { accuracy ->
-                    val height = (accuracy * 100).coerceIn(0f, 100f)
-                    Box(
-                        modifier = Modifier
-                            .width(20.dp)
-                            .fillMaxHeight(height / 100f)
-                            .background(
-                                getMasteryColor(accuracy),
-                                MaterialTheme.shapes.small
-                            )
-                    )
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // X-axis label
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Session 1",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-            Text(
-                text = "Latest",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-        }
-    }
-}
-
-/**
  * Animated stat card with icon
  */
 @Composable
@@ -346,14 +221,5 @@ private fun getMasteryColor(mastery: Float): Color {
         mastery >= 0.8f -> Color(0xFF4CAF50) // Green
         mastery >= 0.6f -> Color(0xFFFF9800) // Orange
         else -> Color(0xFFF44336) // Red
-    }
-}
-
-private fun getResponseTimeColor(bucket: String): Color {
-    return when (bucket) {
-        "< 1s" -> Color(0xFF4CAF50)
-        "1-3s" -> Color(0xFF8BC34A)
-        "3-5s" -> Color(0xFFFF9800)
-        else -> Color(0xFFF44336)
     }
 }

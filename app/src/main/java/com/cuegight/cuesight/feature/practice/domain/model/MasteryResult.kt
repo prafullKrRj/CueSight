@@ -7,4 +7,3 @@ data class MasteryResult(
     val strongestEmotion: String,
     val perEmotionLambda: Map<String, Float>
 )
-

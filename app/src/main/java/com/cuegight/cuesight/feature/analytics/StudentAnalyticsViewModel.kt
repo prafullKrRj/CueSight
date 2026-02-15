@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileWriter
 import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.*
@@ -59,8 +61,8 @@ class StudentAnalyticsViewModel(
 
             try {
                 // Load student info
-                val student = withContext(Dispatchers.IO) {
-                    studentRepository.getAllStudents().value.find { it.id == studentId }
+                val student = withContext(context = Dispatchers.IO) {
+                    studentRepository.getStudentById(studentId)
                 }
 
                 if (student == null) {
@@ -82,13 +84,14 @@ class StudentAnalyticsViewModel(
 
                 // Compute analytics
                 val erpiResult = computeErpi(sessions)
-                val masteryResult = computeMastery(guesses)
+                val masteryResult = computeMastery(guesses, sessions)
                 val cwaResult = computeCwa(guesses)
                 val confusionMatrix = computeConfusionMatrix(guesses)
                 val mostConfusedPairs = findMostConfusedPairs(confusionMatrix)
                 val responseTimeStats = computeResponseTimeStats(guesses)
                 val sessionHistory = buildSessionHistory(sessions, guesses)
-                
+                val sessionAccuracies = sessions.filter { it.totalGuesses > 0 }.map { it.sessionAccuracy }
+
                 val overallAccuracy = if (guesses.isNotEmpty()) {
                     guesses.count { it.isCorrect }.toFloat() / guesses.size
                 } else 0f
@@ -109,7 +112,7 @@ class StudentAnalyticsViewModel(
                     fastestResponseTime = responseTimeStats.fastest,
                     slowestResponseTime = responseTimeStats.slowest,
                     sessionHistory = sessionHistory,
-                    sessionAccuracies = sessions.filter { it.totalGuesses > 0 }.map { it.sessionAccuracy }
+                    sessionAccuracies = sessionAccuracies
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -141,7 +144,7 @@ class StudentAnalyticsViewModel(
         var denominator = 0f
 
         for (i in x.indices) {
-            numerator += (x[i] - xMean) * (y[i] - yMean)
+            numerator += (x[i] - xMean) * (y[i] - yMean).toFloat()
             denominator += (x[i] - xMean) * (x[i] - xMean)
         }
 
@@ -164,17 +167,20 @@ class StudentAnalyticsViewModel(
         return ErpiResult(
             erpiScore = erpiScore,
             slope = slope,
-            interpretation = interpretation
+            interpretation = interpretation,
+            sessionCount = sessions.size,
+            sessionAccuracies = accuracies
         )
     }
 
-    private fun computeMastery(guesses: List<PracticeGuess>): MasteryResult? {
+    private fun computeMastery(guesses: List<PracticeGuess>, sessions: List<PracticeSession>): MasteryResult? {
         if (guesses.isEmpty()) return null
 
         val emotions = guesses.map { it.teacherEmotion }.distinct()
         if (emotions.isEmpty()) return null
 
         val perEmotionScores = mutableMapOf<String, Float>()
+        val perEmotionLambda = mutableMapOf<String, Float>()
 
         for (emotion in emotions) {
             val emotionGuesses = guesses.filter { it.teacherEmotion == emotion }
@@ -182,6 +188,16 @@ class StudentAnalyticsViewModel(
                 val recentGuesses = emotionGuesses.takeLast(10) // Last 10 guesses for this emotion
                 val accuracy = recentGuesses.count { it.isCorrect }.toFloat() / recentGuesses.size
                 perEmotionScores[emotion] = accuracy
+
+                // Compute lambda (decay factor) based on time since last correct
+                val lastCorrect = emotionGuesses.filter { it.isCorrect }.maxByOrNull { it.timestamp }
+                val timeSinceCorrect = if (lastCorrect != null) {
+                    (System.currentTimeMillis() - lastCorrect.timestamp) / (24 * 60 * 60 * 1000f) // days
+                } else {
+                    30f // default high value if never correct
+                }
+                val lambda = kotlin.math.exp(-0.1f * timeSinceCorrect).coerceIn(0.1f, 1.0f)
+                perEmotionLambda[emotion] = lambda
             }
         }
 
@@ -193,7 +209,8 @@ class StudentAnalyticsViewModel(
             aggregateMastery = aggregateMastery,
             perEmotionScores = perEmotionScores,
             strongestEmotion = strongestEmotion,
-            weakestEmotion = weakestEmotion
+            weakestEmotion = weakestEmotion,
+            perEmotionLambda = perEmotionLambda
         )
     }
 
@@ -207,12 +224,12 @@ class StudentAnalyticsViewModel(
         val confusionMatrix = computeConfusionMatrix(guesses)
 
         // Compute per-emotion recall (TP / (TP + FN))
-        val recalls = mutableMapOf<String, Float>()
+        val perClassRecall = mutableMapOf<String, Float>()
         for (emotion in emotions) {
             val tp = confusionMatrix[emotion]?.get(emotion) ?: 0
             val fn = confusionMatrix[emotion]?.values?.sum()?.minus(tp) ?: 0
             val total = tp + fn
-            recalls[emotion] = if (total > 0) tp.toFloat() / total else 0f
+            perClassRecall[emotion] = if (total > 0) tp.toFloat() / total else 0f
         }
 
         // Get therapist weights from database
@@ -232,14 +249,14 @@ class StudentAnalyticsViewModel(
         var cwaScore = 0f
         for (emotion in emotions) {
             val weight = weightMap[emotion] ?: (1.0f / emotions.size)
-            val recall = recalls[emotion] ?: 0f
+            val recall = perClassRecall[emotion] ?: 0f
             cwaScore += weight * recall
         }
 
         return CwaResult(
             cwaScore = cwaScore,
             weights = weightMap,
-            perEmotionRecall = recalls,
+            perClassRecall = perClassRecall,
             confusionMatrix = confusionMatrix
         )
     }
@@ -371,65 +388,88 @@ class StudentAnalyticsViewModel(
 
                 val fileName = "${student.name.replace(" ", "_")}_analytics_${System.currentTimeMillis()}.csv"
 
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                    put(MediaStore.Downloads.MIME_TYPE, "text/csv")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Use different approach based on API level
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Android 10+ (API 29+) - Use MediaStore
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                        put(MediaStore.Downloads.MIME_TYPE, "text/csv")
                         put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                     }
-                }
 
-                val uri = context.contentResolver.insert(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                    values
-                ) ?: return@withContext null
+                    val uri = context.contentResolver.insert(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        values
+                    ) ?: return@withContext null
 
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    OutputStreamWriter(outputStream).use { writer ->
-                        // Write header
-                        writer.write("Student Analytics Export\n")
-                        writer.write("Student Name,${student.name}\n")
-                        writer.write("Age,${student.age}\n")
-                        writer.write("Export Date,${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n")
-                        writer.write("\n")
-
-                        // Write session summary
-                        writer.write("Session Summary\n")
-                        writer.write("Total Sessions,${sessions.size}\n")
-                        writer.write("Total Guesses,${guesses.size}\n")
-                        writer.write("Overall Accuracy,${_state.value.overallAccuracy}\n")
-                        writer.write("\n")
-
-                        // Write ERPI data
-                        _state.value.erpiResult?.let { erpi ->
-                            writer.write("ERPI Metrics\n")
-                            writer.write("ERPI Score,${erpi.erpiScore}\n")
-                            writer.write("Slope,${erpi.slope}\n")
-                            writer.write("Interpretation,${erpi.interpretation}\n")
-                            writer.write("\n")
-                        }
-
-                        // Write per-emotion mastery
-                        writer.write("Emotion Mastery\n")
-                        writer.write("Emotion,Mastery Score\n")
-                        _state.value.masteryResult?.perEmotionScores?.forEach { (emotion, score) ->
-                            writer.write("$emotion,$score\n")
-                        }
-                        writer.write("\n")
-
-                        // Write all guesses
-                        writer.write("Detailed Guess Log\n")
-                        writer.write("Timestamp,Session ID,Teacher Emotion,User Guess,Correct,Response Time (ms)\n")
-                        guesses.forEach { guess ->
-                            writer.write("${guess.timestamp},${guess.sessionId},${guess.teacherEmotion},${guess.userGuess},${guess.isCorrect},${guess.responseTimeMs}\n")
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        OutputStreamWriter(outputStream).use { writer ->
+                            writeCsvContent(writer, student, sessions, guesses)
                         }
                     }
-                }
+                    uri
+                } else {
+                    // Android 9 and below - Use legacy external storage
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (!downloadsDir.exists()) {
+                        downloadsDir.mkdirs()
+                    }
 
-                uri
+                    val file = File(downloadsDir, fileName)
+                    FileWriter(file).use { writer ->
+                        writeCsvContent(writer, student, sessions, guesses)
+                    }
+
+                    Uri.fromFile(file)
+                }
             } catch (e: Exception) {
                 null
             }
+        }
+    }
+
+    private fun writeCsvContent(
+        writer: java.io.Writer,
+        student: Student,
+        sessions: List<PracticeSession>,
+        guesses: List<PracticeGuess>
+    ) {
+        // Write header
+        writer.write("Student Analytics Export\n")
+        writer.write("Student Name,${student.name}\n")
+        writer.write("Age,${student.age}\n")
+        writer.write("Export Date,${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n")
+        writer.write("\n")
+
+        // Write session summary
+        writer.write("Session Summary\n")
+        writer.write("Total Sessions,${sessions.size}\n")
+        writer.write("Total Guesses,${guesses.size}\n")
+        writer.write("Overall Accuracy,${_state.value.overallAccuracy}\n")
+        writer.write("\n")
+
+        // Write ERPI data
+        _state.value.erpiResult?.let { erpi ->
+            writer.write("ERPI Metrics\n")
+            writer.write("ERPI Score,${erpi.erpiScore}\n")
+            writer.write("Slope,${erpi.slope}\n")
+            writer.write("Interpretation,${erpi.interpretation}\n")
+            writer.write("\n")
+        }
+
+        // Write per-emotion mastery
+        writer.write("Emotion Mastery\n")
+        writer.write("Emotion,Mastery Score\n")
+        _state.value.masteryResult?.perEmotionScores?.forEach { (emotion, score) ->
+            writer.write("$emotion,$score\n")
+        }
+        writer.write("\n")
+
+        // Write all guesses
+        writer.write("Detailed Guess Log\n")
+        writer.write("Timestamp,Session ID,Teacher Emotion,User Guess,Correct,Response Time (ms)\n")
+        guesses.forEach { guess ->
+            writer.write("${guess.timestamp},${guess.sessionId},${guess.teacherEmotion},${guess.userGuess},${guess.isCorrect},${guess.responseTimeMs}\n")
         }
     }
 }

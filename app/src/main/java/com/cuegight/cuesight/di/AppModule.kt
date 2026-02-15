@@ -13,8 +13,6 @@ import com.cuegight.cuesight.feature.connection.ConnectionViewModel
 import com.cuegight.cuesight.feature.practice.NewPracticeViewModel
 import com.cuegight.cuesight.feature.teaching.NewTeachingViewModel
 import com.cuegight.cuesight.service.TcpFrameService
-import com.cuegight.cuesight.viewmodel.DashboardViewModel
-import com.cuegight.cuesight.viewmodel.PracticeViewModel
 import com.cuegight.cuesight.viewmodel.SessionViewModel
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import com.cuegight.cuesight.viewmodel.TeachingViewModel
@@ -41,11 +39,10 @@ val appModule = module {
     single { ConnectionManager(androidContext()) }
 
     // ViewModels - Legacy (keeping for backwards compatibility during transition)
-    viewModel { DashboardViewModel(get(), get(), get()) }
+
     viewModel { StudentViewModel(get(), get()) }
     viewModel { SessionViewModel(get(), get(), get()) }
     viewModel { TeachingViewModel(get(), get(), get()) }
-    viewModel { PracticeViewModel(get(), get(), get()) }
     viewModel { TestViewModel(get()) }
     
     // ViewModels - New HTTP-based

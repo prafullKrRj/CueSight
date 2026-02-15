@@ -140,21 +140,6 @@ fun NewTeachingScreen(
                 )
             )
         }
-                        )
-                    }
-
-                    if (!state.isPaused && state.isStreaming) {
-                        IconButton(onClick = { viewModel.pauseSession() }) {
-                            Icon(Icons.Default.Pause, "Pause")
-                        }
-                    } else if (state.isPaused) {
-                        IconButton(onClick = { viewModel.resumeSession() }) {
-                            Icon(Icons.Default.PlayArrow, "Resume")
-                        }
-                    }
-                }
-            )
-        }
     ) { padding ->
         Column(
             modifier = Modifier

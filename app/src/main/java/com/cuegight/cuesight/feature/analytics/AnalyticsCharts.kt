@@ -21,6 +21,7 @@ import co.yml.charts.ui.linechart.model.Line
 import co.yml.charts.ui.linechart.model.LineChartData
 import co.yml.charts.ui.linechart.model.LinePlotData
 import co.yml.charts.ui.linechart.model.LineStyle
+import co.yml.charts.ui.linechart.model.LineType
 import co.yml.charts.ui.linechart.model.SelectionHighlightPoint
 import co.yml.charts.ui.linechart.model.SelectionHighlightPopUp
 import co.yml.charts.ui.linechart.model.ShadowUnderLine
@@ -85,8 +86,7 @@ fun LearningCurveChart(
                     Line(
                         dataPoints = points,
                         lineStyle = LineStyle(
-                            color = MaterialTheme.colorScheme.primary,
-                            lineType = LineStyle.LineType.SmoothCurve()
+                            lineType = LineType.SmoothCurve()
                         ),
                         intersectionPoint = IntersectionPoint(
                             color = MaterialTheme.colorScheme.primary
@@ -109,9 +109,6 @@ fun LearningCurveChart(
             ),
             xAxisData = xAxisData,
             yAxisData = yAxisData,
-            gridLines = GridLines(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            ),
             backgroundColor = Color.Transparent
         )
         
@@ -204,9 +201,6 @@ fun ResponseTimeChart(
                 barWidth = 35.dp
             ),
             backgroundColor = Color.Transparent,
-            gridLines = GridLines(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
         )
         
         BarChart(
@@ -281,9 +275,6 @@ fun EmotionAccuracyChart(
                 barWidth = 30.dp
             ),
             backgroundColor = Color.Transparent,
-            gridLines = GridLines(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
         )
         
         BarChart(
