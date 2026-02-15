@@ -110,7 +110,8 @@ class StudentAnalyticsViewModel(
                     averageResponseTime = responseTimeStats.average,
                     fastestResponseTime = responseTimeStats.fastest,
                     slowestResponseTime = responseTimeStats.slowest,
-                    sessionHistory = sessionHistory
+                    sessionHistory = sessionHistory,
+                    sessionAccuracies = sessions.filter { it.totalGuesses > 0 }.map { it.sessionAccuracy }
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -451,6 +452,7 @@ data class StudentAnalyticsState(
     val fastestResponseTime: Long = 0L,
     val slowestResponseTime: Long = 0L,
     val sessionHistory: List<SessionHistoryItem> = emptyList(),
+    val sessionAccuracies: List<Float> = emptyList(), // For chart
     val error: String? = null
 )
 

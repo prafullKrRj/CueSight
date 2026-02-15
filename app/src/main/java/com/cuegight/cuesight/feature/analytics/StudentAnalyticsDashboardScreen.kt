@@ -174,10 +174,52 @@ private fun StudentAnalyticsContent(
             )
         }
         
-        // Learning Trajectory (ERPI)
-        if (state.erpiResult != null) {
+        // Learning Trajectory (ERPI) with chart
+        if (state.erpiResult != null && state.sessionAccuracies.isNotEmpty()) {
             item {
-                LearningTrajectoryCard(erpiResult = state.erpiResult)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.TrendingUp, null, modifier = Modifier.size(32.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Learning Trajectory (ERPI)",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        
+                        Text(
+                            text = "ERPI Score: %.3f".format(state.erpiResult.erpiScore),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = when {
+                                state.erpiResult.erpiScore > 0.0f -> Color(0xFF4CAF50)
+                                state.erpiResult.erpiScore > -0.1f -> Color(0xFFFF9800)
+                                else -> Color(0xFFF44336)
+                            }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        
+                        Text(
+                            text = state.erpiResult.interpretation,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        
+                        // Professional line chart
+                        VicoLearningCurveChart(
+                            accuracies = state.sessionAccuracies,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
             }
         }
         
@@ -917,8 +959,8 @@ private fun ResponseTimeCardEnhanced(
             
             Spacer(Modifier.height(16.dp))
             
-            // Histogram
-            ResponseTimeHistogram(
+            // Professional column chart
+            VicoResponseTimeChart(
                 distribution = distribution,
                 modifier = Modifier.fillMaxWidth()
             )
