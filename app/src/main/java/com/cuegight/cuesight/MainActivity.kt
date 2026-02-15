@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cuegight.cuesight.data.model.SessionMode
+import com.cuegight.cuesight.feature.analytics.AnalyticsScreen
 import com.cuegight.cuesight.feature.connection.ConnectionScreen
 import com.cuegight.cuesight.feature.practice.NewPracticeScreen
 import com.cuegight.cuesight.feature.splash.SplashScreen
@@ -96,6 +97,17 @@ fun CueSightApp() {
                 studentId = studentId,
                 studentName = studentName,
                 onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        
+        // Analytics screen
+        composable(Screen.Analytics.route) {
+            AnalyticsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToStudentAnalytics = { studentId ->
+                    // Future: Navigate to detailed student analytics
+                    navController.navigate(Screen.StudentDetail.createRoute(studentId))
+                }
             )
         }
         

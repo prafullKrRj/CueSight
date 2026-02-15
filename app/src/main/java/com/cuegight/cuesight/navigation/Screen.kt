@@ -15,6 +15,9 @@ sealed class Screen(val route: String) {
             "new_practice_session/$studentId/${studentName.replace("/", "_")}"
     }
     
+    // Analytics
+    object Analytics : Screen("analytics")
+    
     // Legacy screens (will be refactored)
     object Entry : Screen("entry")
     object Dashboard : Screen("dashboard")
