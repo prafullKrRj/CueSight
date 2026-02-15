@@ -20,7 +20,6 @@ import com.cuegight.cuesight.feature.practice.data.dao.*
     version = 5,
     exportSchema = false
 )
-@TypeConverters(Converters::class)
 abstract class CueSightDatabase : RoomDatabase() {
     abstract fun studentDao(): StudentDao
     

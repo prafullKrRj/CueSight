@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +46,16 @@ fun LearningCurveChart(
         return
     }
 
+    val points = remember(accuracies) {
+        accuracies.mapIndexed { index, accuracy ->
+            Point(index.toFloat(), accuracy)
+        }
+    }
+
+    val maxY = remember(accuracies) {
+        accuracies.maxOrNull()?.let { kotlin.math.ceil(it * 10) / 10 } ?: 1f
+    }
+
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             "Learning Curve",
@@ -52,13 +63,6 @@ fun LearningCurveChart(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        
-        val points = accuracies.mapIndexed { index, accuracy ->
-            Point(index.toFloat(), accuracy)
-        }
-        
-        val maxY = accuracies.maxOrNull()?.let { kotlin.math.ceil(it * 10) / 10 } ?: 1f
-        val minY = 0f
         
         val xAxisData = AxisData.Builder()
             .axisStepSize(30.dp)
@@ -72,7 +76,7 @@ fun LearningCurveChart(
         val yAxisData = AxisData.Builder()
             .steps(5)
             .labelData { index -> 
-                val value = minY + (index * (maxY - minY) / 5)
+                val value = 0f + (index * (maxY - 0f) / 5)
                 String.format("%.1f", value)
             }
             .labelAndAxisLinePadding(12.dp)
@@ -146,12 +150,18 @@ fun ResponseTimeChart(
     distribution: Map<String, Int>,
     modifier: Modifier = Modifier
 ) {
-    val buckets = listOf("< 1s", "1-3s", "3-5s", "> 5s")
-    val values = buckets.map { distribution[it]?.toFloat() ?: 0f }
-    
+    val buckets = remember { listOf("< 1s", "1-3s", "3-5s", "> 5s") }
+    val values = remember(distribution) {
+        buckets.map { distribution[it]?.toFloat() ?: 0f }
+    }
+
     if (values.all { it == 0f }) {
         Text("No response time data available", modifier = modifier)
         return
+    }
+
+    val maxY = remember(values) {
+        values.maxOrNull()?.let { kotlin.math.ceil(it) } ?: 1f
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -169,8 +179,6 @@ fun ResponseTimeChart(
                 label = buckets[index]
             )
         }
-        
-        val maxY = values.maxOrNull()?.let { kotlin.math.ceil(it) } ?: 1f
         
         val xAxisData = AxisData.Builder()
             .axisStepSize(40.dp)
@@ -226,6 +234,10 @@ fun EmotionAccuracyChart(
         return
     }
 
+    val sortedEmotions = remember(emotionScores) {
+        emotionScores.toList().sortedByDescending { it.second }
+    }
+
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             "Per-Emotion Accuracy",
@@ -233,8 +245,6 @@ fun EmotionAccuracyChart(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        
-        val sortedEmotions = emotionScores.toList().sortedByDescending { it.second }
         
         val barData = sortedEmotions.mapIndexed { index, (emotion, score) ->
             BarData(

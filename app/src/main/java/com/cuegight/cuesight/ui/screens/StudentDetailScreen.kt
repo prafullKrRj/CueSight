@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.cuegight.cuesight.data.database.SessionMode
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
 import java.util.Locale

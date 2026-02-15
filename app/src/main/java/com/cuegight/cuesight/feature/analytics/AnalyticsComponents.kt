@@ -31,9 +31,9 @@ fun MasteryRing(
     emotion: String,
     modifier: Modifier = Modifier
 ) {
-    val animatedProgress = remember { Animatable(0f) }
-    
-    LaunchedEffect(mastery) {
+    val animatedProgress = remember(emotion) { Animatable(0f) }
+
+    LaunchedEffect(emotion, mastery) {
         animatedProgress.animateTo(
             targetValue = mastery,
             animationSpec = tween(durationMillis = 1000, easing = EaseOutCubic)
@@ -95,70 +95,78 @@ fun ConfusionMatrixHeatmap(
     if (emotions.isEmpty()) return
     
     // Find max value for color scaling
-    val maxValue = confusionMatrix.values
-        .flatMap { it.values }
-        .maxOrNull() ?: 1
-    
+    val maxValue = remember(confusionMatrix) {
+        confusionMatrix.values
+            .flatMap { it.values }
+            .maxOrNull() ?: 1
+    }
+
     Column(modifier = modifier) {
         // Header row
         Row(modifier = Modifier.fillMaxWidth()) {
-            Box(modifier = Modifier.size(60.dp)) // Empty corner
+            Box(modifier = Modifier.size(60.dp)) {} // Empty corner
             emotions.forEach { emotion ->
-                Box(
-                    modifier = Modifier.size(60.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = emotion.take(3),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
+                key(emotion) {
+                    Box(
+                        modifier = Modifier.size(60.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = emotion.take(3),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
         
         // Data rows
         emotions.forEach { actualEmotion ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                // Row label
-                Box(
-                    modifier = Modifier.size(60.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = actualEmotion.take(3),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                
-                // Data cells
-                emotions.forEach { predictedEmotion ->
-                    val count = confusionMatrix[actualEmotion]?.get(predictedEmotion) ?: 0
-                    val intensity = if (maxValue > 0) count.toFloat() / maxValue else 0f
-                    
-                    val cellColor = if (actualEmotion == predictedEmotion) {
-                        // Diagonal (correct predictions) - green scale
-                        Color(0xFF4CAF50).copy(alpha = 0.2f + (intensity * 0.6f))
-                    } else {
-                        // Off-diagonal (errors) - red scale
-                        Color(0xFFF44336).copy(alpha = 0.1f + (intensity * 0.5f))
-                    }
-                    
+            key(actualEmotion) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    // Row label
                     Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .background(cellColor)
-                            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                        modifier = Modifier.size(60.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = count.toString(),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = if (count > 0) FontWeight.Bold else FontWeight.Normal,
-                            color = if (intensity > 0.5f) Color.White else MaterialTheme.colorScheme.onSurface
+                            text = actualEmotion.take(3),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    // Data cells
+                    emotions.forEach { predictedEmotion ->
+                        key("${actualEmotion}_${predictedEmotion}") {
+                            val count = confusionMatrix[actualEmotion]?.get(predictedEmotion) ?: 0
+                            val intensity = if (maxValue > 0) count.toFloat() / maxValue else 0f
+
+                            val cellColor = remember(actualEmotion, predictedEmotion, intensity) {
+                                if (actualEmotion == predictedEmotion) {
+                                    Color(0xFF4CAF50).copy(alpha = 0.2f + (intensity * 0.6f))
+                                } else {
+                                    Color(0xFFF44336).copy(alpha = 0.1f + (intensity * 0.5f))
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .background(cellColor)
+                                    .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = count.toString(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (count > 0) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (intensity > 0.5f) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
             }
