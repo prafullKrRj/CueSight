@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 data class StudentListState(
@@ -78,5 +79,5 @@ class StudentViewModel(
     fun getSessionsByStudent(studentId: Long) = flow {
         val sessions = practiceRepository.getSessionsByStudent(studentId)
         emit(sessions)
-    }
+    }.flowOn(Dispatchers.IO)
 }

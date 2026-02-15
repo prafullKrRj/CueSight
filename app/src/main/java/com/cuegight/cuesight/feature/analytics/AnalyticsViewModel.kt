@@ -30,18 +30,20 @@ class AnalyticsViewModel(
             try {
                 studentRepository.getAllStudents()
                     .collect { students ->
-                        // Get all sessions once
+                        // Get all sessions once per load
                         val allSessions = practiceRepository.getAllSessions()
                         
                         // Calculate analytics for each student
                         val analytics = students.map { student ->
                             val studentSessions = allSessions.filter { it.studentId == student.id }
-                            val totalSessions = studentSessions.size
-                            val totalGuesses = studentSessions.sumOf { it.totalGuesses }
-                            val totalCorrect = studentSessions.sumOf { it.correctGuesses }
-                            val totalDuration = studentSessions.sumOf { session ->
-                                val endTime = session.endTime ?: System.currentTimeMillis()
-                                (endTime - session.startTime) / 1000
+                            // Only count completed sessions for analytics
+                            val completedSessions = studentSessions.filter { it.endTime != null }
+                            val totalSessions = completedSessions.size
+                            val totalGuesses = completedSessions.sumOf { it.totalGuesses }
+                            val totalCorrect = completedSessions.sumOf { it.correctGuesses }
+                            val totalDuration = completedSessions.sumOf { session ->
+                                val endTime = session.endTime ?: 0L
+                                if (endTime > 0) (endTime - session.startTime) / 1000 else 0L
                             }
                             val averageAccuracy = if (totalGuesses > 0) {
                                 totalCorrect.toFloat() / totalGuesses.toFloat()
@@ -54,7 +56,7 @@ class AnalyticsViewModel(
                                 totalEmotions = totalGuesses,
                                 totalDurationSeconds = totalDuration,
                                 averageAccuracy = averageAccuracy,
-                                lastSessionDate = studentSessions.maxByOrNull { it.startTime }?.startTime
+                                lastSessionDate = completedSessions.maxByOrNull { it.startTime }?.startTime
                             )
                         }
                         

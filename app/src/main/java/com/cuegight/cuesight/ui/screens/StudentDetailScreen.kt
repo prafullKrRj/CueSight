@@ -28,12 +28,18 @@ fun StudentDetailScreen(
 ) {
     val student by viewModel.getStudentById(studentId).collectAsState(initial = null)
     val sessions by viewModel.getSessionsByStudent(studentId).collectAsState(initial = emptyList())
-    val orderedSessions = remember(sessions) { sessions.sortedBy { it.startTime } }
+    // Only show completed sessions in UI
+    val completedSessions = remember(sessions) {
+        sessions.filter { it.endTime != null }
+    }
+    val orderedSessions = remember(completedSessions) { 
+        completedSessions.sortedBy { it.startTime } 
+    }
 
     val totalDurationSeconds = remember(orderedSessions) {
         orderedSessions.sumOf { session ->
-            val endTime = session.endTime ?: System.currentTimeMillis()
-            (endTime - session.startTime) / 1000
+            val endTime = session.endTime ?: 0L
+            if (endTime > 0) (endTime - session.startTime) / 1000 else 0L
         }
     }
     val totalDurationLabel = remember(totalDurationSeconds) {
