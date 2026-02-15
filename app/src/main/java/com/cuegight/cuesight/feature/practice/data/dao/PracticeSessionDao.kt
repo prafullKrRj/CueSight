@@ -24,5 +24,14 @@ interface PracticeSessionDao {
 
     @Query("SELECT sessionAccuracy FROM practice_sessions WHERE totalGuesses > 0 ORDER BY startTime ASC")
     suspend fun getSessionAccuracies(): List<Float>
+    
+    @Query("SELECT * FROM practice_sessions WHERE studentId = :studentId ORDER BY startTime ASC")
+    suspend fun getByStudentId(studentId: Long): List<PracticeSession>
+    
+    @Query("SELECT sessionAccuracy FROM practice_sessions WHERE studentId = :studentId AND totalGuesses > 0 ORDER BY startTime ASC")
+    suspend fun getSessionAccuraciesByStudent(studentId: Long): List<Float>
+    
+    @Query("SELECT COUNT(*) FROM practice_sessions WHERE studentId = :studentId")
+    suspend fun getSessionCountByStudent(studentId: Long): Int
 }
 

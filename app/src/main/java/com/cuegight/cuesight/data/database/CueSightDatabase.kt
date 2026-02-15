@@ -21,7 +21,7 @@ import com.cuegight.cuesight.feature.practice.data.dao.*
         EmotionMastery::class,
         TherapistWeight::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

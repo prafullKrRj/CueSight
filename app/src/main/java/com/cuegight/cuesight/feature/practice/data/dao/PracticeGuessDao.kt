@@ -25,5 +25,21 @@ interface PracticeGuessDao {
 
     @Query("SELECT COUNT(*) FROM practice_guesses")
     suspend fun countAll(): Int
+    
+    @Query("""
+        SELECT pg.* FROM practice_guesses pg
+        INNER JOIN practice_sessions ps ON pg.sessionId = ps.sessionId
+        WHERE ps.studentId = :studentId
+        ORDER BY pg.timestamp ASC
+    """)
+    suspend fun getByStudentId(studentId: Long): List<PracticeGuess>
+    
+    @Query("""
+        SELECT pg.* FROM practice_guesses pg
+        INNER JOIN practice_sessions ps ON pg.sessionId = ps.sessionId
+        WHERE ps.studentId = :studentId AND pg.teacherEmotion = :emotion
+        ORDER BY pg.timestamp ASC
+    """)
+    suspend fun getByStudentIdAndEmotion(studentId: Long, emotion: String): List<PracticeGuess>
 }
 
