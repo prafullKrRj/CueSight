@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,7 +19,6 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
@@ -38,8 +39,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.cuegight.cuesight.ui.theme.CueSightColors
+import androidx.compose.ui.unit.sp
 import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -122,93 +124,18 @@ private fun AnalyticsList(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Overall stats card
-        item {
-            OverallStatsCard(analytics)
-        }
-
-        // Student analytics cards
-        items(analytics) { studentAnalytics ->
+        // Student analytics cards with stable keys
+        items(
+            items = analytics,
+            key = { studentAnalytics -> "student_${studentAnalytics.studentId}" }
+        ) { studentAnalytics ->
             StudentAnalyticsCard(
                 analytics = studentAnalytics,
                 onClick = { onStudentClick(studentAnalytics.studentId) }
             )
         }
-    }
-}
-
-@Composable
-private fun OverallStatsCard(analytics: List<StudentAnalytics>) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Overall Statistics",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatColumn(
-                    icon = Icons.Default.People,
-                    label = "Students",
-                    value = analytics.size.toString()
-                )
-                StatColumn(
-                    icon = Icons.Default.PlayCircle,
-                    label = "Sessions",
-                    value = analytics.sumOf { it.totalSessions }.toString()
-                )
-                StatColumn(
-                    icon = Icons.Default.EmojiEmotions,
-                    label = "Emotions",
-                    value = analytics.sumOf { it.totalEmotions }.toString()
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatColumn(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(32.dp),
-            tint = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-        )
     }
 }
 
@@ -220,13 +147,17 @@ private fun StudentAnalyticsCard(
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Student name and info
+            // Student name and chevron
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -235,47 +166,79 @@ private fun StudentAnalyticsCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = analytics.studentName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp
                     )
                     if (analytics.lastSessionDate != null) {
                         Text(
                             text = "Last session: ${formatDate(analytics.lastSessionDate)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }
                 Icon(
                     Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    contentDescription = "View details",
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
 
-            // Progress bar (placeholder - would show accuracy if available)
-            LinearProgressIndicator(
-                progress = { 0.75f }, // Placeholder
-                modifier = Modifier.fillMaxWidth(),
-                color = CueSightColors.Green
-            )
-
-            // Stats row
+            // Stats row with icons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                SmallStat(
+                StatWithIcon(
+                    icon = Icons.Default.PlayCircle,
                     label = "Sessions",
                     value = analytics.totalSessions.toString()
                 )
-                SmallStat(
+                StatWithIcon(
+                    icon = Icons.Default.EmojiEmotions,
                     label = "Emotions",
                     value = analytics.totalEmotions.toString()
                 )
-                SmallStat(
+                StatWithIcon(
+                    icon = Icons.Default.BarChart,
                     label = "Duration",
                     value = formatDuration(analytics.totalDurationSeconds)
+                )
+            }
+
+            // Progress indicator
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Overall Progress",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = "75%",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { 0.75f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                 )
             }
         }
@@ -283,21 +246,31 @@ private fun StudentAnalyticsCard(
 }
 
 @Composable
-private fun SmallStat(
+private fun StatWithIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String
 ) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(28.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+        )
         Text(
             text = value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp
         )
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
     }
@@ -320,13 +293,16 @@ private fun EmptyAnalyticsView(
         )
         Text(
             text = "No Analytics Yet",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            fontSize = 24.sp
         )
         Text(
             text = "Complete some sessions to see progress analytics",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            style = MaterialTheme.typography.bodyLarge,
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center
         )
     }
 }

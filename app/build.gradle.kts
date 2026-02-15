@@ -71,6 +71,8 @@ dependencies {
     // Networking - OkHttp for HTTP streaming
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.coil.compose)
+    // Image loading library
+    implementation("io.coil-kt:coil-compose:2.5.0")
 
     implementation(libs.retrofit)
     implementation(libs.converter.gson)

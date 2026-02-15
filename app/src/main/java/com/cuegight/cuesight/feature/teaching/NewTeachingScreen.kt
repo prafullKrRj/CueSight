@@ -3,19 +3,67 @@ package com.cuegight.cuesight.feature.teaching
 import android.graphics.Bitmap
 import android.webkit.WebSettings
 import android.webkit.WebView
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -157,7 +205,8 @@ fun NewTeachingScreen(
                 isStreaming = state.isStreaming,
                 isPaused = state.isPaused,
                 frameCount = state.frameCount,
-                onWebViewCreated = { webView = it }
+                onWebViewCreated = { webView = it },
+                state = state
             )
 
             // START STREAMING BUTTON (only show when not streaming)
@@ -367,6 +416,7 @@ fun SessionTimerCard(elapsedSeconds: Long) {
 
 @Composable
 fun WebViewCameraFeedCard(
+    state: TeachingState,
     isStreaming: Boolean,
     isPaused: Boolean,
     frameCount: Int,
@@ -383,20 +433,41 @@ fun WebViewCameraFeedCard(
         ) {
             when {
                 isStreaming && !isPaused -> {
-                    // WebView showing MJPEG stream
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { context ->
-                            WebView(context).apply {
-                                settings.javaScriptEnabled = true
-                                settings.cacheMode = WebSettings.LOAD_NO_CACHE
-                                settings.builtInZoomControls = false
-                                settings.displayZoomControls = false
-                                loadUrl("http://192.168.4.1/stream")
-                                onWebViewCreated(this)
+                    // Show WebView for JPEG or wait for frames for Grayscale
+                    if (state.useJpegStream) {
+                        // WebView showing MJPEG stream
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { context ->
+                                WebView(context).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.cacheMode = WebSettings.LOAD_NO_CACHE
+                                    settings.builtInZoomControls = false
+                                    settings.displayZoomControls = false
+                                    loadUrl("http://192.168.4.1/stream")
+                                    onWebViewCreated(this)
+                                }
+                            }
+                        )
+                    } else {
+                        // Show grayscale frames as Image
+                        if (state.currentFrame != null) {
+                            Image(
+                                bitmap = state.currentFrame.asImageBitmap(),
+                                contentDescription = "Camera Feed",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            // Loading state
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator()
+                                Text("Connecting to grayscale stream...")
                             }
                         }
-                    )
+                    }
 
                     // Live indicator overlay
                     if (frameCount > 0) {

@@ -34,7 +34,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -878,50 +877,6 @@ private fun ExportDataDialog(
     )
 }
 
-// Enhanced card components using AnalyticsComponents
-
-@Composable
-private fun ConfusionMatrixCardEnhanced(
-    confusionMatrix: Map<String, Map<String, Int>>,
-    mostConfusedPairs: List<Pair<String, String>>
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.GridOn, null, modifier = Modifier.size(32.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "Confusion Matrix",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            
-            // Enhanced heatmap
-            ConfusionMatrixHeatmap(
-                confusionMatrix = confusionMatrix,
-                emotions = confusionMatrix.keys.sorted(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            
-            Spacer(Modifier.height(16.dp))
-            
-            Text(
-                text = "Most confused pairs:",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold
-            )
-            mostConfusedPairs.take(3).forEach { (actual, guessed) ->
-                Text(
-                    text = "• Confuses $actual with $guessed",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(start = 8.dp, top = 4.dp)
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ResponseTimeCardEnhanced(
@@ -973,6 +928,49 @@ private fun ResponseTimeCardEnhanced(
                 distribution = distribution,
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+@Composable
+private fun ConfusionMatrixCardEnhanced(
+    confusionMatrix: Map<String, Map<String, Int>>,
+    mostConfusedPairs: List<Pair<String, String>>
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.GridOn, null, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "Confusion Matrix",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+
+            // Enhanced heatmap
+            ConfusionMatrixHeatmap(
+                confusionMatrix = confusionMatrix,
+                emotions = confusionMatrix.keys.sorted(),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                text = "Most confused pairs:",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            mostConfusedPairs.take(3).forEach { (actual, guessed) ->
+                Text(
+                    text = "• Confuses $actual with $guessed",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                )
+            }
         }
     }
 }

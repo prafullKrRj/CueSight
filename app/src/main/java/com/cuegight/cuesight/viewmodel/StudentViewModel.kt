@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.data.model.Student
 import com.cuegight.cuesight.data.repository.StudentRepository
-import com.cuegight.cuesight.feature.practice.data.entity.PracticeSession
 import com.cuegight.cuesight.feature.practice.data.repository.PracticeRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,14 +48,21 @@ class StudentViewModel(
             }
         }
     }
-    
-    fun addStudent(name: String, age: Int, diagnosis: String, notes: String) {
+
+    fun addStudent(
+        name: String,
+        age: Int,
+        diagnosis: String,
+        notes: String,
+        photoUri: String? = null
+    ) {
         viewModelScope.launch {
             val student = Student(
                 name = name,
                 age = age,
                 diagnosis = diagnosis,
-                notes = notes
+                notes = notes,
+                photoUri = photoUri
             )
             studentRepository.insertStudent(student)
         }

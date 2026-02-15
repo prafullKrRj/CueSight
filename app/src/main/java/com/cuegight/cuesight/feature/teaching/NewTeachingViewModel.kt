@@ -4,9 +4,9 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cuegight.cuesight.core.network.GrayscaleStreamReader
 import com.cuegight.cuesight.core.network.HttpCommandSender
 import com.cuegight.cuesight.core.network.HttpMjpegStreamService
-import com.cuegight.cuesight.core.util.EmotionMapper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -15,22 +15,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 /**
- * New Teaching ViewModel using HTTP streaming
- * Features:
- * - HTTP MJPEG streaming from ESP32
- * - Emotion detection using MLKit
- * - HTTP command sending (only when emotion changes)
- * - In-memory session tracking (NO database logging)
+ * New Teaching ViewModel supporting both JPEG and Grayscale streams
+ * Set USE_JPEG_STREAM flag to choose stream type
  */
 class NewTeachingViewModel(
     private val streamService: HttpMjpegStreamService,
     private val commandSender: HttpCommandSender
 ) : ViewModel() {
+
+    // ═══ CONFIGURATION FLAG ═══
+    // true = JPEG stream via WebView
+    // false = Grayscale stream via OkHttp
+    private val USE_JPEG_STREAM = true // Change this to switch modes
 
     private val _state = MutableStateFlow(TeachingState())
     val state: StateFlow<TeachingState> = _state.asStateFlow()
@@ -40,6 +40,9 @@ class NewTeachingViewModel(
     private var lastSentEmotion: String? = null
     private val emotionHistory = mutableListOf<EmotionRecord>()
     private var streamingRequested = false
+
+    // Grayscale stream reader (only used when USE_JPEG_STREAM = false)
+    private var grayscaleReader: GrayscaleStreamReader? = null
 
     // MLKit Face Detector
     private val faceDetector by lazy {
@@ -78,10 +81,37 @@ class NewTeachingViewModel(
         }
 
         streamingRequested = true
-        Log.d("TeachingVM", "📡 Starting WebView stream...")
 
-        // Just set the flag - WebView will be shown and screenshots will be captured
-        _state.value = _state.value.copy(isStreaming = true, streamError = null)
+        if (USE_JPEG_STREAM) {
+            Log.d("TeachingVM", "📡 Starting JPEG WebView stream...")
+            // Just set the flag - WebView will be shown and screenshots will be captured
+            _state.value = _state.value.copy(
+                isStreaming = true,
+                streamError = null,
+                useJpegStream = true
+            )
+        } else {
+            Log.d("TeachingVM", "📡 Starting Grayscale OkHttp stream...")
+            _state.value = _state.value.copy(
+                isStreaming = true,
+                streamError = null,
+                useJpegStream = false
+            )
+
+            // Start grayscale stream reader
+            grayscaleReader = GrayscaleStreamReader("http://192.168.4.1/stream")
+            grayscaleReader?.startStream(
+                onFrameReceived = { bitmap ->
+                    viewModelScope.launch {
+                        onFrameReceived(bitmap)
+                    }
+                },
+                onError = { error ->
+                    _state.value = _state.value.copy(streamError = error)
+                    Log.e("TeachingVM", "Stream error: $error")
+                }
+            )
+        }
 
         // Start timer
         updateSessionTime()
@@ -190,6 +220,11 @@ class NewTeachingViewModel(
         streamingRequested = false
         streamingJob?.cancel()
         streamingJob = null
+
+        // Stop grayscale reader if active
+        grayscaleReader?.stopStream()
+        grayscaleReader = null
+
         _state.value = _state.value.copy(isStreaming = false)
     }
 
@@ -259,7 +294,8 @@ data class TeachingState(
     val commandsSentCount: Int = 0,
     val sessionElapsedSeconds: Long = 0,
     val sessionStats: SessionStats? = null,
-    val shouldNavigateBack: Boolean = false
+    val shouldNavigateBack: Boolean = false,
+    val useJpegStream: Boolean = false // NEW: indicates which stream type to use
 )
 
 data class EmotionRecord(

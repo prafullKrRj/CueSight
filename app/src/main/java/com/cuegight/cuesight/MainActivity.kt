@@ -116,6 +116,9 @@ fun CueSightApp() {
                         else -> return@StudentDetailScreen
                     }
                     navController.navigate(route)
+                },
+                onNavigateToAnalytics = {
+                    navController.navigate(Screen.StudentAnalyticsDashboard.createRoute(it))
                 }
             )
         }

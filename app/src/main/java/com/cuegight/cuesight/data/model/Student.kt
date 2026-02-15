@@ -11,6 +11,7 @@ data class Student(
     val age: Int,
     val diagnosis: String = "",
     val notes: String = "",
+    val photoUri: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val photoUri: String? = null
+    val updatedAt: Long = System.currentTimeMillis()
 )

@@ -1,6 +1,11 @@
 package com.cuegight.cuesight.feature.analytics
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -9,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import co.yml.charts.axis.AxisData
 import co.yml.charts.common.model.Point
 import co.yml.charts.ui.barchart.BarChart
@@ -42,7 +48,12 @@ fun LearningCurveChart(
     modifier: Modifier = Modifier
 ) {
     if (accuracies.isEmpty()) {
-        Text("No data available", modifier = modifier)
+        Text(
+            "No data available",
+            modifier = modifier,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
         return
     }
 
@@ -59,18 +70,20 @@ fun LearningCurveChart(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             "Learning Curve",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
+            fontSize = 22.sp,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 12.dp)
         )
         
         val xAxisData = AxisData.Builder()
-            .axisStepSize(30.dp)
+            .axisStepSize(50.dp)
             .steps(accuracies.size - 1)
-            .labelData { index -> "${index + 1}" }
-            .labelAndAxisLinePadding(8.dp)
-            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
+            .labelData { index -> "S${index + 1}" }
+            .labelAndAxisLinePadding(15.dp)
+            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
             .build()
             
         val yAxisData = AxisData.Builder()
@@ -79,9 +92,9 @@ fun LearningCurveChart(
                 val value = 0f + (index * (maxY - 0f) / 5)
                 String.format("%.1f", value)
             }
-            .labelAndAxisLinePadding(12.dp)
-            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
+            .labelAndAxisLinePadding(16.dp)
+            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
             .build()
         
         val lineChartData = LineChartData(
@@ -90,19 +103,23 @@ fun LearningCurveChart(
                     Line(
                         dataPoints = points,
                         lineStyle = LineStyle(
-                            lineType = LineType.SmoothCurve()
+                            color = MaterialTheme.colorScheme.primary,
+                            lineType = LineType.SmoothCurve(isDotted = false),
+                            width = 3f
                         ),
                         intersectionPoint = IntersectionPoint(
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            radius = 4.dp
                         ),
                         selectionHighlightPoint = SelectionHighlightPoint(
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.tertiary,
+                            radius = 6.dp
                         ),
                         shadowUnderLine = ShadowUnderLine(
-                            alpha = 0.3f,
+                            alpha = 0.4f,
                             brush = androidx.compose.ui.graphics.Brush.verticalGradient(
                                 colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
                                     Color.Transparent
                                 )
                             )
@@ -113,29 +130,37 @@ fun LearningCurveChart(
             ),
             xAxisData = xAxisData,
             yAxisData = yAxisData,
+            gridLines = GridLines(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)),
             backgroundColor = Color.Transparent
         )
         
         LineChart(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp),
+                .height(220.dp)
+                .padding(top = 8.dp),
             lineChartData = lineChartData
         )
         
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 "Session 1",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
             Text(
                 "Latest",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
     }
@@ -156,7 +181,12 @@ fun ResponseTimeChart(
     }
 
     if (values.all { it == 0f }) {
-        Text("No response time data available", modifier = modifier)
+        Text(
+            "No response time data available",
+            modifier = modifier,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
         return
     }
 
@@ -167,26 +197,28 @@ fun ResponseTimeChart(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             "Response Time Distribution",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
+            fontSize = 22.sp,
+            color = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.padding(bottom = 12.dp)
         )
         
         val barData = values.mapIndexed { index, value ->
             BarData(
                 point = Point(index.toFloat(), value),
-                color = MaterialTheme.colorScheme.primary,
+                color = getResponseTimeColor(buckets[index]),
                 label = buckets[index]
             )
         }
         
         val xAxisData = AxisData.Builder()
-            .axisStepSize(40.dp)
+            .axisStepSize(60.dp)
             .steps(buckets.size - 1)
             .labelData { index -> buckets.getOrNull(index) ?: "" }
-            .labelAndAxisLinePadding(8.dp)
-            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
+            .labelAndAxisLinePadding(15.dp)
+            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
             .build()
             
         val yAxisData = AxisData.Builder()
@@ -195,9 +227,9 @@ fun ResponseTimeChart(
                 val value = index * maxY / 5
                 String.format("%.0f", value)
             }
-            .labelAndAxisLinePadding(12.dp)
-            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
+            .labelAndAxisLinePadding(16.dp)
+            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
             .build()
         
         val barChartData = BarChartData(
@@ -205,8 +237,8 @@ fun ResponseTimeChart(
             xAxisData = xAxisData,
             yAxisData = yAxisData,
             barStyle = BarStyle(
-                paddingBetweenBars = 12.dp,
-                barWidth = 35.dp
+                paddingBetweenBars = 16.dp,
+                barWidth = 40.dp
             ),
             backgroundColor = Color.Transparent,
         )
@@ -214,7 +246,8 @@ fun ResponseTimeChart(
         BarChart(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp),
+                .height(220.dp)
+                .padding(top = 8.dp),
             barChartData = barChartData
         )
     }
@@ -230,7 +263,12 @@ fun EmotionAccuracyChart(
     modifier: Modifier = Modifier
 ) {
     if (emotionScores.isEmpty()) {
-        Text("No emotion data available", modifier = modifier)
+        Text(
+            "No emotion data available",
+            modifier = modifier,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
         return
     }
 
@@ -241,9 +279,11 @@ fun EmotionAccuracyChart(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             "Per-Emotion Accuracy",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
+            fontSize = 22.sp,
+            color = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.padding(bottom = 12.dp)
         )
         
         val barData = sortedEmotions.mapIndexed { index, (emotion, score) ->
@@ -255,14 +295,14 @@ fun EmotionAccuracyChart(
         }
         
         val xAxisData = AxisData.Builder()
-            .axisStepSize(40.dp)
+            .axisStepSize(55.dp)
             .steps(sortedEmotions.size - 1)
-            .labelData { index -> 
-                sortedEmotions.getOrNull(index)?.first?.take(4) ?: ""
+            .labelData { index ->
+                sortedEmotions.getOrNull(index)?.first?.take(5) ?: ""
             }
-            .labelAndAxisLinePadding(8.dp)
-            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
+            .labelAndAxisLinePadding(15.dp)
+            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
             .build()
             
         val yAxisData = AxisData.Builder()
@@ -271,9 +311,9 @@ fun EmotionAccuracyChart(
                 val value = index * 1.0f / 5
                 String.format("%.1f", value)
             }
-            .labelAndAxisLinePadding(12.dp)
-            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
+            .labelAndAxisLinePadding(16.dp)
+            .axisLineColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
             .build()
         
         val barChartData = BarChartData(
@@ -281,8 +321,8 @@ fun EmotionAccuracyChart(
             xAxisData = xAxisData,
             yAxisData = yAxisData,
             barStyle = BarStyle(
-                paddingBetweenBars = 8.dp,
-                barWidth = 30.dp
+                paddingBetweenBars = 12.dp,
+                barWidth = 38.dp
             ),
             backgroundColor = Color.Transparent,
         )
@@ -290,7 +330,8 @@ fun EmotionAccuracyChart(
         BarChart(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp),
+                .height(220.dp)
+                .padding(top = 8.dp),
             barChartData = barChartData
         )
     }
@@ -298,8 +339,17 @@ fun EmotionAccuracyChart(
 
 private fun getAccuracyColor(accuracy: Float): Color {
     return when {
-        accuracy >= 0.8f -> Color(0xFF4CAF50) // Green
-        accuracy >= 0.6f -> Color(0xFFFF9800) // Orange
-        else -> Color(0xFFF44336) // Red
+        accuracy >= 0.8f -> Color(0xFF2E7D32) // Darker Green
+        accuracy >= 0.6f -> Color(0xFFEF6C00) // Darker Orange
+        else -> Color(0xFFC62828) // Darker Red
+    }
+}
+
+private fun getResponseTimeColor(bucket: String): Color {
+    return when (bucket) {
+        "< 1s" -> Color(0xFF2E7D32) // Fast - Green
+        "1-3s" -> Color(0xFF43A047) // Good - Light Green
+        "3-5s" -> Color(0xFFEF6C00) // Slow - Orange
+        else -> Color(0xFFC62828) // Very Slow - Red
     }
 }
