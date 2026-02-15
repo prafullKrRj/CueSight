@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.core.network.HttpCommandSender
 import com.cuegight.cuesight.core.network.HttpMjpegStreamService
 import com.cuegight.cuesight.core.util.EmotionMapper
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetectorOptions
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /**
  * New Teaching ViewModel using HTTP streaming
@@ -34,6 +38,20 @@ class NewTeachingViewModel(
     private var sessionStartTime: Long = 0
     private var lastSentEmotion: String? = null
     private val emotionHistory = mutableListOf<EmotionRecord>()
+    
+    // MLKit Face Detector
+    private val faceDetector by lazy {
+        FaceDetection.getClient(
+            FaceDetectorOptions.Builder()
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+                .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
+                .setMinFaceSize(0.15f) // Minimum face size relative to image
+                .enableTracking() // Track faces across frames
+                .build()
+        )
+    }
 
     fun startSession(studentId: Long, studentName: String) {
         sessionStartTime = System.currentTimeMillis()
@@ -76,38 +94,73 @@ class NewTeachingViewModel(
             frameCount = _state.value.frameCount + 1
         )
         
-        // TODO: Add MLKit emotion detection here
-        // For now, we'll simulate emotion detection
-        // In real implementation, use MLKit Face Detection + classification
-        val detectedEmotion = detectEmotion(bitmap)
-        
-        // Only send if emotion changed
-        if (detectedEmotion != lastSentEmotion && detectedEmotion != null) {
-            sendEmotionCommand(detectedEmotion)
-            lastSentEmotion = detectedEmotion
+        // Detect emotion using MLKit
+        viewModelScope.launch {
+            val detectedEmotion = detectEmotion(bitmap)
             
-            // Record emotion (in-memory)
-            emotionHistory.add(EmotionRecord(
-                emotion = detectedEmotion,
-                timestamp = System.currentTimeMillis(),
-                confidence = 0.85f // TODO: Get actual confidence from MLKit
-            ))
-            
-            _state.value = _state.value.copy(
-                currentEmotion = detectedEmotion,
-                emotionCount = emotionHistory.size
-            )
+            // Only send if emotion changed
+            if (detectedEmotion != lastSentEmotion && detectedEmotion != null) {
+                sendEmotionCommand(detectedEmotion)
+                lastSentEmotion = detectedEmotion
+                
+                // Record emotion (in-memory)
+                emotionHistory.add(EmotionRecord(
+                    emotion = detectedEmotion,
+                    timestamp = System.currentTimeMillis(),
+                    confidence = 0.85f // TODO: Store actual confidence from detection
+                ))
+                
+                _state.value = _state.value.copy(
+                    currentEmotion = detectedEmotion,
+                    emotionCount = emotionHistory.size
+                )
+            }
         }
     }
 
-    private fun detectEmotion(bitmap: Bitmap): String? {
-        // TODO: Implement MLKit face detection and emotion classification
-        // This is a placeholder that returns null for now
-        // Real implementation will use:
-        // 1. MLKit Face Detection to detect faces
-        // 2. Facial feature analysis to classify emotion
-        // 3. Return emotion string (Happy, Sad, Angry, etc.)
-        return null
+    private suspend fun detectEmotion(bitmap: Bitmap): String? {
+        return try {
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val faces = faceDetector.process(image).await()
+            
+            if (faces.isEmpty()) {
+                // No face detected
+                return null
+            }
+            
+            // Get the first (largest/most prominent) face
+            val face = faces[0]
+            
+            // Get smiling and eye open probabilities
+            val smilingProb = face.smilingProbability ?: 0f
+            val leftEyeOpenProb = face.leftEyeOpenProbability ?: 1f
+            val rightEyeOpenProb = face.rightEyeOpenProbability ?: 1f
+            
+            // Classify emotion based on facial features
+            // This is a simplified classification - can be enhanced
+            when {
+                // Happy: High smiling probability
+                smilingProb > 0.7f -> "Happy"
+                
+                // Sad: Low smiling, often partially closed eyes
+                smilingProb < 0.2f && (leftEyeOpenProb < 0.5f || rightEyeOpenProb < 0.5f) -> "Sad"
+                
+                // Surprised: Wide eyes (both eyes very open)
+                leftEyeOpenProb > 0.9f && rightEyeOpenProb > 0.9f && smilingProb < 0.5f -> "Surprise"
+                
+                // Angry: Low smiling, tense features (this is harder to detect accurately)
+                smilingProb < 0.3f && leftEyeOpenProb > 0.6f && rightEyeOpenProb > 0.6f -> "Angry"
+                
+                // Neutral: Moderate smiling, normal eye openness
+                smilingProb in 0.3f..0.6f -> "Neutral"
+                
+                // Default to Neutral if no strong indicators
+                else -> "Neutral"
+            }
+        } catch (e: Exception) {
+            // If emotion detection fails, return null
+            null
+        }
     }
 
     private fun sendEmotionCommand(emotion: String) {
@@ -173,6 +226,7 @@ class NewTeachingViewModel(
     override fun onCleared() {
         super.onCleared()
         stopStreaming()
+        // Note: faceDetector.close() is not necessary as it's managed by MLKit
     }
 }
 
