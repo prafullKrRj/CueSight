@@ -3,11 +3,15 @@ package com.cuegight.cuesight.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cuegight.cuesight.data.model.Student
-import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.data.repository.StudentRepository
+import com.cuegight.cuesight.feature.practice.data.entity.PracticeSession
+import com.cuegight.cuesight.feature.practice.data.repository.PracticeRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 data class StudentListState(
@@ -18,7 +22,7 @@ data class StudentListState(
 
 class StudentViewModel(
     private val studentRepository: StudentRepository,
-    private val sessionRepository: SessionRepository
+    private val practiceRepository: PracticeRepository
 ) : ViewModel() {
     
     private val _state = MutableStateFlow(StudentListState())
@@ -72,5 +76,8 @@ class StudentViewModel(
     
     fun getStudentById(id: Long) = studentRepository.getStudentByIdFlow(id)
 
-    fun getSessionsByStudent(studentId: Long) = sessionRepository.getSessionsByStudent(studentId)
+    fun getSessionsByStudent(studentId: Long) = flow {
+        val sessions = practiceRepository.getSessionsByStudent(studentId)
+        emit(sessions)
+    }.flowOn(Dispatchers.IO)
 }

@@ -2,18 +2,18 @@ package com.cuegight.cuesight.feature.analytics
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.data.repository.StudentRepository
+import com.cuegight.cuesight.feature.practice.data.repository.PracticeRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 /**
  * Analytics ViewModel
- * Provides student progress and session analytics
+ * Provides student progress and session analytics using PracticeRepository
  */
 class AnalyticsViewModel(
     private val studentRepository: StudentRepository,
-    private val sessionRepository: SessionRepository
+    private val practiceRepository: PracticeRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AnalyticsState())
@@ -28,38 +28,38 @@ class AnalyticsViewModel(
             _state.value = _state.value.copy(isLoading = true)
 
             try {
-                // Combine student and session data
                 studentRepository.getAllStudents()
-                    .combine(sessionRepository.getAllSessions()) { students, sessions ->
+                    .collect { students ->
+                        // Get all sessions once per load
+                        val allSessions = practiceRepository.getAllSessions()
+                        
                         // Calculate analytics for each student
-                        students.map { student ->
-                            val studentSessions = sessions.filter { it.studentId == student.id }
-                            val totalSessions = studentSessions.size
-                            val totalEmotions = studentSessions.sumOf { it.totalEmotionsDetected }
-                            val totalDuration = studentSessions.sumOf { it.durationSeconds }
-                            val averageAccuracy = if (studentSessions.isNotEmpty()) {
-                                // Note: Accuracy calculation would need more detailed session data
-                                0.0f // Placeholder
-                            } else 0.0f
+                        val analytics = students.map { student ->
+                            val studentSessions = allSessions.filter { it.studentId == student.id }
+                            // Only count completed sessions for analytics
+                            val completedSessions = studentSessions.filter { it.endTime != null }
+                            val totalSessions = completedSessions.size
+                            val totalGuesses = completedSessions.sumOf { it.totalGuesses }
+                            val totalCorrect = completedSessions.sumOf { it.correctGuesses }
+                            val totalDuration = completedSessions.sumOf { session ->
+                                val endTime = session.endTime ?: 0L
+                                if (endTime > 0) (endTime - session.startTime) / 1000 else 0L
+                            }
+                            val averageAccuracy = if (totalGuesses > 0) {
+                                totalCorrect.toFloat() / totalGuesses.toFloat()
+                            } else 0f
 
                             StudentAnalytics(
                                 studentId = student.id,
                                 studentName = student.name,
                                 totalSessions = totalSessions,
-                                totalEmotions = totalEmotions,
+                                totalEmotions = totalGuesses,
                                 totalDurationSeconds = totalDuration,
                                 averageAccuracy = averageAccuracy,
-                                lastSessionDate = studentSessions.maxByOrNull { it.startTime }?.startTime
+                                lastSessionDate = completedSessions.maxByOrNull { it.startTime }?.startTime
                             )
                         }
-                    }
-                    .catch { e ->
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            error = e.message
-                        )
-                    }
-                    .collect { analytics ->
+                        
                         _state.value = _state.value.copy(
                             isLoading = false,
                             studentAnalytics = analytics,

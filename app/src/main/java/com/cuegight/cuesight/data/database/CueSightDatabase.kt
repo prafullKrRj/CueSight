@@ -5,8 +5,6 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import com.cuegight.cuesight.data.model.EmotionLog
-import com.cuegight.cuesight.data.model.Session
 import com.cuegight.cuesight.data.model.Student
 import com.cuegight.cuesight.feature.practice.data.entity.*
 import com.cuegight.cuesight.feature.practice.data.dao.*
@@ -14,21 +12,17 @@ import com.cuegight.cuesight.feature.practice.data.dao.*
 @Database(
     entities = [
         Student::class,
-        Session::class,
-        EmotionLog::class,
         PracticeGuess::class,
         PracticeSession::class,
         EmotionMastery::class,
         TherapistWeight::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class CueSightDatabase : RoomDatabase() {
     abstract fun studentDao(): StudentDao
-    abstract fun sessionDao(): SessionDao
-    abstract fun emotionLogDao(): EmotionLogDao
     
     // Practice Mode DAOs
     abstract fun practiceGuessDao(): PracticeGuessDao
