@@ -12,7 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
 import java.util.Locale
@@ -32,18 +31,21 @@ fun StudentDetailScreen(
     val orderedSessions = remember(sessions) { sessions.sortedBy { it.startTime } }
 
     val totalDurationSeconds = remember(orderedSessions) {
-        orderedSessions.sumOf { it.durationSeconds }
+        orderedSessions.sumOf { session ->
+            val endTime = session.endTime ?: System.currentTimeMillis()
+            (endTime - session.startTime) / 1000
+        }
     }
     val totalDurationLabel = remember(totalDurationSeconds) {
         formatDuration(totalDurationSeconds)
     }
-    val averageEmotions = remember(orderedSessions) {
+    val averageGuesses = remember(orderedSessions) {
         if (orderedSessions.isEmpty()) 0f else {
-            orderedSessions.sumOf { it.totalEmotionsDetected }.toFloat() / orderedSessions.size
+            orderedSessions.sumOf { it.totalGuesses }.toFloat() / orderedSessions.size
         }
     }
-    val averageEmotionsLabel = remember(averageEmotions) {
-        String.format(Locale.US, AVERAGE_FORMAT, averageEmotions)
+    val averageGuessesLabel = remember(averageGuesses) {
+        String.format(Locale.US, AVERAGE_FORMAT, averageGuesses)
     }
     
     Scaffold(
@@ -198,7 +200,7 @@ fun StudentDetailScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     StatPill(text = "Sessions: ${orderedSessions.size}")
-                                    StatPill(text = "Avg emotions: $averageEmotionsLabel")
+                                    StatPill(text = "Avg guesses: $averageGuessesLabel")
                                     StatPill(text = "Total time: $totalDurationLabel")
                                 }
                             }
