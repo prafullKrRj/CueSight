@@ -177,6 +177,11 @@ class ConnectionViewModel(
         _state.value = ConnectionState()
         checkConnection()
     }
+    
+    fun skipConnection() {
+        // Allow user to skip connection and go directly to app (analytics-only mode)
+        _state.value = _state.value.copy(shouldNavigateToHome = true)
+    }
 
     fun onNavigated() {
         _state.value = _state.value.copy(shouldNavigateToHome = false)
