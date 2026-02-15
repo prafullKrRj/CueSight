@@ -11,7 +11,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cuegight.cuesight.data.model.SessionMode
 import com.cuegight.cuesight.feature.connection.ConnectionScreen
+import com.cuegight.cuesight.feature.practice.NewPracticeScreen
 import com.cuegight.cuesight.feature.splash.SplashScreen
+import com.cuegight.cuesight.feature.teaching.NewTeachingScreen
 import com.cuegight.cuesight.navigation.Screen
 import com.cuegight.cuesight.ui.screens.AddStudentScreen
 import com.cuegight.cuesight.ui.screens.EntryScreen
@@ -61,6 +63,39 @@ fun CueSightApp() {
                         popUpTo(Screen.Connection.route) { inclusive = true }
                     }
                 }
+            )
+        }
+        
+        // New HTTP-based session screens
+        composable(
+            route = Screen.NewTeachingSession.route,
+            arguments = listOf(
+                navArgument("studentId") { type = NavType.LongType },
+                navArgument("studentName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
+            val studentName = backStackEntry.arguments?.getString("studentName") ?: ""
+            NewTeachingScreen(
+                studentId = studentId,
+                studentName = studentName,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        
+        composable(
+            route = Screen.NewPracticeSession.route,
+            arguments = listOf(
+                navArgument("studentId") { type = NavType.LongType },
+                navArgument("studentName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
+            val studentName = backStackEntry.arguments?.getString("studentName") ?: ""
+            NewPracticeScreen(
+                studentId = studentId,
+                studentName = studentName,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
         

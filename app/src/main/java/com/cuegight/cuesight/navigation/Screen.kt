@@ -5,6 +5,16 @@ sealed class Screen(val route: String) {
     object Splash : Screen("splash")
     object Connection : Screen("connection")
     
+    // New HTTP-based session screens
+    object NewTeachingSession : Screen("new_teaching_session/{studentId}/{studentName}") {
+        fun createRoute(studentId: Long, studentName: String) = 
+            "new_teaching_session/$studentId/${studentName.replace("/", "_")}"
+    }
+    object NewPracticeSession : Screen("new_practice_session/{studentId}/{studentName}") {
+        fun createRoute(studentId: Long, studentName: String) = 
+            "new_practice_session/$studentId/${studentName.replace("/", "_")}"
+    }
+    
     // Legacy screens (will be refactored)
     object Entry : Screen("entry")
     object Dashboard : Screen("dashboard")
