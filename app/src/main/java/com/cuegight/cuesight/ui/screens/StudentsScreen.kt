@@ -24,19 +24,24 @@ fun StudentsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToAddStudent: () -> Unit,
     onNavigateToStudent: (Long) -> Unit,
-    viewModel: StudentViewModel = koinViewModel()
+    viewModel: StudentViewModel = koinViewModel(),
+    showBackButton: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsState()
     
     Scaffold(
+        modifier = modifier,
         topBar = {
             TopAppBar(
                 title = { Text("Students") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                navigationIcon = if (showBackButton) {
+                    {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Default.ArrowBack, "Back")
+                        }
                     }
-                }
+                } else null
             )
         },
         floatingActionButton = {

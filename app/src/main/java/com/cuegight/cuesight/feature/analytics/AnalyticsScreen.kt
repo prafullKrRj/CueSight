@@ -25,19 +25,24 @@ import java.util.*
 fun AnalyticsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToStudentAnalytics: (Long) -> Unit = {},
-    viewModel: AnalyticsViewModel = koinViewModel()
+    viewModel: AnalyticsViewModel = koinViewModel(),
+    showBackButton: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsState()
 
     Scaffold(
+        modifier = modifier,
         topBar = {
             TopAppBar(
                 title = { Text("Analytics") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                navigationIcon = if (showBackButton) {
+                    {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Default.ArrowBack, "Back")
+                        }
                     }
-                },
+                } else null,
                 actions = {
                     IconButton(onClick = { viewModel.refresh() }) {
                         Icon(Icons.Default.Refresh, "Refresh")

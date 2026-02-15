@@ -16,8 +16,10 @@ import com.cuegight.cuesight.feature.practice.NewPracticeScreen
 import com.cuegight.cuesight.feature.splash.SplashScreen
 import com.cuegight.cuesight.feature.teaching.NewTeachingScreen
 import com.cuegight.cuesight.navigation.Screen
+import com.cuegight.cuesight.ui.components.BottomNavTab
 import com.cuegight.cuesight.ui.screens.AddStudentScreen
 import com.cuegight.cuesight.ui.screens.EntryScreen
+import com.cuegight.cuesight.ui.screens.MainScreen
 import com.cuegight.cuesight.ui.screens.SettingsScreen
 import com.cuegight.cuesight.ui.screens.StudentDetailScreen
 import com.cuegight.cuesight.ui.screens.StudentsScreen
@@ -60,10 +62,18 @@ fun CueSightApp() {
         composable(Screen.Connection.route) {
             ConnectionScreen(
                 onNavigateToHome = {
-                    navController.navigate(Screen.Students.route) {
+                    navController.navigate("main") {
                         popUpTo(Screen.Connection.route) { inclusive = true }
                     }
                 }
+            )
+        }
+        
+        // Main screen with bottom navigation
+        composable("main") {
+            MainScreen(
+                navController = navController,
+                initialTab = BottomNavTab.STUDENTS
             )
         }
         
@@ -100,22 +110,11 @@ fun CueSightApp() {
             )
         }
         
-        // Analytics screen
-        composable(Screen.Analytics.route) {
-            AnalyticsScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToStudentAnalytics = { studentId ->
-                    // Future: Navigate to detailed student analytics
-                    navController.navigate(Screen.StudentDetail.createRoute(studentId))
-                }
-            )
-        }
-        
         // Legacy entry screen (for backwards compatibility during transition)
         composable(Screen.Entry.route) {
             EntryScreen(
                 onNavigateToStudentEntry = {
-                    navController.navigate(Screen.Students.route)
+                    navController.navigate("main")
                 },
                 onNavigateToDeveloperTest = {
                     navController.navigate(Screen.DeveloperTest.route)
@@ -123,6 +122,7 @@ fun CueSightApp() {
             )
         }
         
+        // Individual screens (for navigation from main screen)
         composable(Screen.Students.route) {
             StudentsScreen(
                 onNavigateBack = { navController.popBackStack() },
@@ -191,6 +191,16 @@ fun CueSightApp() {
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        
+        // Analytics route (for standalone access)
+        composable(Screen.Analytics.route) {
+            AnalyticsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToStudentAnalytics = { studentId ->
+                    navController.navigate(Screen.StudentDetail.createRoute(studentId))
+                }
             )
         }
     }
