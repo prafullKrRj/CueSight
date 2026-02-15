@@ -482,7 +482,7 @@ fun AestheticTextField(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = if (isError)
-                    Color(0xFFFFEBEE)
+                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
                 else
                     MaterialTheme.colorScheme.surface
             ),

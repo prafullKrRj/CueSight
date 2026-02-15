@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.cuegight.cuesight.ui.theme.CueSightColors
 import com.cuegight.cuesight.feature.practice.domain.model.*
 import com.cuegight.cuesight.feature.practice.ui.components.*
 import kotlinx.coroutines.launch
@@ -148,9 +149,9 @@ fun ErpiCard(result: ErpiResult?) {
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = when {
-                        it.erpiScore > 0.0f -> Color(0xFF4CAF50)
-                        it.erpiScore > -0.1f -> Color(0xFFFF9800)
-                        else -> Color(0xFFF44336)
+                        it.erpiScore > 0.0f -> CueSightColors.Green
+                        it.erpiScore > -0.1f -> CueSightColors.Orange
+                        else -> CueSightColors.Red
                     }
                 )
                 Spacer(Modifier.height(8.dp))
@@ -211,7 +212,7 @@ fun MasteryCard(result: MasteryResult?) {
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Weakest:", style = MaterialTheme.typography.bodySmall)
-                        Text(it.weakestEmotion, fontWeight = FontWeight.Bold, color = Color(0xFFF44336))
+                        Text(it.weakestEmotion, fontWeight = FontWeight.Bold, color = CueSightColors.Red)
                     }
                 }
             } ?: Text("Computing...", style = MaterialTheme.typography.bodyLarge)

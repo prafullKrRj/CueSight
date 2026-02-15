@@ -12,8 +12,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.cuegight.cuesight.ui.components.EmptyState
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
@@ -83,7 +86,10 @@ fun StudentsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
-                items(state.students) { student ->
+                items(
+                    items = state.students,
+                    key = { student -> student.id }
+                ) { student ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -96,17 +102,29 @@ fun StudentsScreen(
                                 .fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Display photo if available, otherwise show initial
                             Surface(
-                                modifier = Modifier.size(56.dp),
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(MaterialTheme.shapes.medium),
                                 shape = MaterialTheme.shapes.medium,
                                 color = MaterialTheme.colorScheme.primaryContainer
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = student.name.firstOrNull()?.uppercase() ?: "?",
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                if (student.photoUri != null) {
+                                    AsyncImage(
+                                        model = student.photoUri,
+                                        contentDescription = "Photo of ${student.name}",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
                                     )
+                                } else {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Text(
+                                            text = student.name.firstOrNull()?.uppercase() ?: "?",
+                                            style = MaterialTheme.typography.headlineMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
                                 }
                             }
                             Spacer(modifier = Modifier.width(16.dp))

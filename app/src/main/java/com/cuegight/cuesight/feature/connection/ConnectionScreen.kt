@@ -140,6 +140,20 @@ fun ConnectionScreen(
                     Text("Retry")
                 }
             }
+            
+            // Skip connection button - always show (except on success)
+            if (state.currentStep != ConnectionStep.SUCCESS) {
+                TextButton(
+                    onClick = { viewModel.skipConnection() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Continue without connection (Analytics only)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 }

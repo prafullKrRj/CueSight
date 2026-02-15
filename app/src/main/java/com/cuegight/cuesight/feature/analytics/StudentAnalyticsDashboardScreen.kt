@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cuegight.cuesight.data.model.Student
+import com.cuegight.cuesight.ui.theme.CueSightColors
 import com.cuegight.cuesight.feature.practice.domain.model.CwaResult
 import com.cuegight.cuesight.feature.practice.domain.model.ErpiResult
 import com.cuegight.cuesight.feature.practice.domain.model.MasteryResult
@@ -243,11 +244,7 @@ private fun StudentAnalyticsContent(
                             text = "ERPI Score: %.3f".format(state.erpiResult.erpiScore),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
-                            color = when {
-                                state.erpiResult.erpiScore > 0.0f -> Color(0xFF4CAF50)
-                                state.erpiResult.erpiScore > -0.1f -> Color(0xFFFF9800)
-                                else -> Color(0xFFF44336)
-                            }
+                            color = getErpiScoreColor(state.erpiResult.erpiScore)
                         )
                         Spacer(Modifier.height(8.dp))
                         
@@ -419,35 +416,19 @@ private fun OverallStatsCard(
                 StatItem(
                     label = "ERPI",
                     value = erpiResult?.let { "%.3f".format(it.erpiScore) } ?: "—",
-                    color = erpiResult?.let { 
-                        when {
-                            it.erpiScore > 0.0f -> Color(0xFF4CAF50)
-                            it.erpiScore > -0.1f -> Color(0xFFFF9800)
-                            else -> Color(0xFFF44336)
-                        }
-                    } ?: MaterialTheme.colorScheme.onSecondaryContainer
+                    color = erpiResult?.let { getErpiScoreColor(it.erpiScore) } ?: MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 
                 StatItem(
                     label = "Overall Accuracy",
                     value = "${(overallAccuracy * 100).toInt()}%",
-                    color = when {
-                        overallAccuracy >= 0.8f -> Color(0xFF4CAF50)
-                        overallAccuracy >= 0.6f -> Color(0xFFFF9800)
-                        else -> Color(0xFFF44336)
-                    }
+                    color = getAccuracyColor(overallAccuracy)
                 )
                 
                 StatItem(
                     label = "CWA Score",
                     value = cwaResult?.let { "${(it.cwaScore * 100).toInt()}%" } ?: "—",
-                    color = cwaResult?.let {
-                        when {
-                            it.cwaScore >= 0.7f -> Color(0xFF4CAF50)
-                            it.cwaScore >= 0.5f -> Color(0xFFFF9800)
-                            else -> Color(0xFFF44336)
-                        }
-                    } ?: MaterialTheme.colorScheme.onSecondaryContainer
+                    color = cwaResult?.let { getCwaScoreColor(it.cwaScore) } ?: MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
         }
@@ -495,11 +476,7 @@ private fun LearningTrajectoryCard(erpiResult: ErpiResult) {
                 text = "ERPI Score: %.3f".format(erpiResult.erpiScore),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = when {
-                    erpiResult.erpiScore > 0.0f -> Color(0xFF4CAF50)
-                    erpiResult.erpiScore > -0.1f -> Color(0xFFFF9800)
-                    else -> Color(0xFFF44336)
-                }
+                color = getErpiScoreColor(erpiResult.erpiScore)
             )
             Spacer(Modifier.height(8.dp))
             
@@ -553,11 +530,11 @@ private fun EmotionMasteryCard(masteryResult: MasteryResult) {
             ) {
                 Column {
                     Text("Strongest:", style = MaterialTheme.typography.bodySmall)
-                    Text(masteryResult.strongestEmotion, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                    Text(masteryResult.strongestEmotion, fontWeight = FontWeight.Bold, color = CueSightColors.Green)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Weakest:", style = MaterialTheme.typography.bodySmall)
-                    Text(masteryResult.weakestEmotion, fontWeight = FontWeight.Bold, color = Color(0xFFF44336))
+                    Text(masteryResult.weakestEmotion, fontWeight = FontWeight.Bold, color = CueSightColors.Red)
                 }
             }
         }
@@ -702,11 +679,8 @@ private fun SessionHistoryCard(session: SessionHistoryItem) {
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = when {
-                    session.accuracy >= 0.8f -> Color(0xFF4CAF50)
-                    session.accuracy >= 0.6f -> Color(0xFFFF9800)
-                    else -> Color(0xFFF44336)
-                }
-            ) {
+                    getAccuracyColor(session.accuracy)
+                ) {
                 Text(
                     text = "${(session.accuracy * 100).toInt()}%",
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -983,3 +957,28 @@ data class SessionHistoryItem(
     val correctGuesses: Int,
     val accuracy: Float
 )
+
+// Helper functions for semantic colors
+private fun getErpiScoreColor(score: Float): Color {
+    return when {
+        score > 0.0f -> CueSightColors.Green  // Positive learning trajectory
+        score > -0.1f -> CueSightColors.Orange  // Neutral/slight decline
+        else -> CueSightColors.Red  // Negative trajectory
+    }
+}
+
+private fun getAccuracyColor(accuracy: Float): Color {
+    return when {
+        accuracy >= 0.8f -> CueSightColors.Green  // High accuracy
+        accuracy >= 0.6f -> CueSightColors.Orange  // Moderate accuracy
+        else -> CueSightColors.Red  // Low accuracy
+    }
+}
+
+private fun getCwaScoreColor(cwaScore: Float): Color {
+    return when {
+        cwaScore >= 0.7f -> CueSightColors.Green  // High CWA
+        cwaScore >= 0.5f -> CueSightColors.Orange  // Moderate CWA
+        else -> CueSightColors.Red  // Low CWA
+    }
+}

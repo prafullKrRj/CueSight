@@ -62,9 +62,11 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.cuegight.cuesight.data.database.SessionMode
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
@@ -201,14 +203,14 @@ fun StudentDetailScreen(
                                 modifier = Modifier
                                     .size(120.dp)
                                     .shadow(8.dp, CircleShape)
+                                    .clip(CircleShape)
                                     .background(
                                         brush = Brush.radialGradient(
                                             colors = listOf(
                                                 MaterialTheme.colorScheme.primary,
                                                 MaterialTheme.colorScheme.tertiary
                                             )
-                                        ),
-                                        shape = CircleShape
+                                        )
                                     )
                                     .border(
                                         4.dp,
@@ -217,12 +219,21 @@ fun StudentDetailScreen(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = student?.name?.firstOrNull()?.uppercase() ?: "?",
-                                    style = MaterialTheme.typography.displayLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
+                                if (student?.photoUri != null) {
+                                    AsyncImage(
+                                        model = student.photoUri,
+                                        contentDescription = "Photo of ${student.name}",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        text = student?.name?.firstOrNull()?.uppercase() ?: "?",
+                                        style = MaterialTheme.typography.displayLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
