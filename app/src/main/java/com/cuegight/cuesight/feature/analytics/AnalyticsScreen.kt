@@ -106,7 +106,7 @@ fun AnalyticsScreen(
                 else -> {
                     AnalyticsList(
                         analytics = state.studentAnalytics,
-                        onStudentClick = onNavigateToStudentAnalytics
+                        onStudentClick = onNavigateToStudentAnalytics // Now navigates to analytics dashboard
                     )
                 }
             }

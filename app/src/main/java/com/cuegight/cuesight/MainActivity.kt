@@ -170,8 +170,19 @@ fun CueSightApp() {
             AnalyticsScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToStudentAnalytics = { studentId ->
-                    navController.navigate(Screen.StudentDetail.createRoute(studentId))
+                    navController.navigate(Screen.StudentAnalyticsDashboard.createRoute(studentId))
                 }
+            )
+        }
+        
+        composable(
+            route = Screen.StudentAnalyticsDashboard.route,
+            arguments = listOf(navArgument("studentId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val studentId = backStackEntry.arguments?.getLong("studentId") ?: 0L
+            com.cuegight.cuesight.feature.analytics.StudentAnalyticsDashboardScreen(
+                studentId = studentId,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

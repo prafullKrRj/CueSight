@@ -8,6 +8,7 @@ import com.cuegight.cuesight.data.repository.EmotionLogRepository
 import com.cuegight.cuesight.data.repository.SessionRepository
 import com.cuegight.cuesight.data.repository.StudentRepository
 import com.cuegight.cuesight.feature.analytics.AnalyticsViewModel
+import com.cuegight.cuesight.feature.analytics.StudentAnalyticsViewModel
 import com.cuegight.cuesight.feature.connection.ConnectionViewModel
 import com.cuegight.cuesight.feature.practice.NewPracticeViewModel
 import com.cuegight.cuesight.feature.teaching.NewTeachingViewModel
@@ -47,9 +48,12 @@ val appModule = module {
     viewModel { PracticeViewModel(get(), get(), get()) }
     viewModel { TestViewModel(get()) }
     
-    // ViewModels - New HTTP-based (no database logging)
+    // ViewModels - New HTTP-based
     viewModel { ConnectionViewModel(get(), get()) }
     viewModel { NewTeachingViewModel(get(), get()) }
-    viewModel { NewPracticeViewModel(get()) }
+    viewModel { NewPracticeViewModel(get(), get()) } // Now with database logging
     viewModel { AnalyticsViewModel(get(), get()) }
+    viewModel { (studentId: Long) -> 
+        StudentAnalyticsViewModel(studentId, get(), get(), get())
+    }
 }

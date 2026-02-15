@@ -33,5 +33,8 @@ sealed class Screen(val route: String) {
     // ANALYTICS & SETTINGS
     // ═══════════════════════════════════════════════════════
     object Analytics : Screen("analytics")
+    object StudentAnalyticsDashboard : Screen("student_analytics/{studentId}") {
+        fun createRoute(studentId: Long) = "student_analytics/$studentId"
+    }
     object Settings : Screen("settings")
 }

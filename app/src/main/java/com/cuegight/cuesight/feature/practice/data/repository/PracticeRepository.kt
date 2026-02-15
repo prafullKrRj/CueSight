@@ -93,6 +93,28 @@ class PracticeRepository(
     suspend fun getSessionAccuracies(): List<Float> = withContext(Dispatchers.IO) {
         practiceSessionDao.getSessionAccuracies()
     }
+    
+    // Student-specific session operations
+    suspend fun getSessionsByStudent(studentId: Long): List<PracticeSession> = withContext(Dispatchers.IO) {
+        practiceSessionDao.getByStudentId(studentId)
+    }
+    
+    suspend fun getSessionAccuraciesByStudent(studentId: Long): List<Float> = withContext(Dispatchers.IO) {
+        practiceSessionDao.getSessionAccuraciesByStudent(studentId)
+    }
+    
+    suspend fun getSessionCountByStudent(studentId: Long): Int = withContext(Dispatchers.IO) {
+        practiceSessionDao.getSessionCountByStudent(studentId)
+    }
+    
+    // Student-specific guess operations
+    suspend fun getGuessesByStudent(studentId: Long): List<PracticeGuess> = withContext(Dispatchers.IO) {
+        practiceGuessDao.getByStudentId(studentId)
+    }
+    
+    suspend fun getGuessesByStudentAndEmotion(studentId: Long, emotion: String): List<PracticeGuess> = withContext(Dispatchers.IO) {
+        practiceGuessDao.getByStudentIdAndEmotion(studentId, emotion)
+    }
 
     // Mastery operations
     suspend fun getMastery(emotion: String): EmotionMastery? = withContext(Dispatchers.IO) {

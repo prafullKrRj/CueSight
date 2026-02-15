@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 data class PracticeSession(
     @PrimaryKey
     val sessionId: String,
+    val studentId: Long = 0L, // Link to student - default 0 for backward compatibility
     val startTime: Long,
     val endTime: Long? = null,
     val totalGuesses: Int = 0,

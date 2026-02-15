@@ -53,7 +53,11 @@ fun NewPracticeScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Practice Mode", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "Practice Mode",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
                         Text(
                             studentName,
                             style = MaterialTheme.typography.bodyMedium,
@@ -62,10 +66,37 @@ fun NewPracticeScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { showEndDialog = true }) {
-                        Icon(Icons.Default.Close, "End session")
+                    IconButton(
+                        onClick = { viewModel.togglePause() },
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(48.dp)
+                    ) {
+                        Icon(
+                            if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            if (state.isPaused) "Resume" else "Pause",
+                            modifier = Modifier.size(32.dp)
+                        )
                     }
-                }
+                },
+                actions = {
+                    Button(
+                        onClick = { showEndDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("End Session", fontWeight = FontWeight.Bold)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             )
         }
     ) { padding ->
@@ -77,35 +108,77 @@ fun NewPracticeScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Pause overlay
+            AnimatedVisibility(
+                visible = state.isPaused,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Pause,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Session Paused",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            "Tap play to continue",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+
             // Session stats card
             SessionStatsCard(
                 correctCount = state.correctCount,
                 totalCount = state.totalCount
             )
 
-            // Main interaction card
-            when (state.currentStep) {
-                PracticeStep.WAITING_FOR_TEACHER -> {
-                    TeacherEmotionSelectionCard(
-                        onEmotionSelected = { viewModel.onTeacherEmotionSelected(it) }
-                    )
-                }
-                PracticeStep.WAITING_FOR_STUDENT -> {
-                    StudentGuessSelectionCard(
-                        teacherEmotion = state.teacherEmotion ?: "",
-                        onGuessSelected = { viewModel.onStudentGuessSelected(it) }
-                    )
-                }
-                PracticeStep.CHECKING -> {
-                    CheckingCard()
-                }
-                PracticeStep.SHOWING_RESULT -> {
-                    ResultCard(
-                        isCorrect = state.isCorrect ?: false,
-                        teacherEmotion = state.teacherEmotion ?: "",
-                        studentGuess = state.studentGuess ?: "",
-                        onNextRound = { viewModel.startNextRound() }
-                    )
+            // Main interaction card (only if not paused)
+            if (!state.isPaused) {
+                when (state.currentStep) {
+                    PracticeStep.WAITING_FOR_TEACHER -> {
+                        TeacherEmotionSelectionCard(
+                            onEmotionSelected = { viewModel.onTeacherEmotionSelected(it) }
+                        )
+                    }
+                    PracticeStep.WAITING_FOR_STUDENT -> {
+                        StudentGuessSelectionCard(
+                            teacherEmotion = state.teacherEmotion ?: "",
+                            onGuessSelected = { viewModel.onStudentGuessSelected(it) }
+                        )
+                    }
+                    PracticeStep.CHECKING -> {
+                        CheckingCard()
+                    }
+                    PracticeStep.SHOWING_RESULT -> {
+                        ResultCard(
+                            isCorrect = state.isCorrect ?: false,
+                            teacherEmotion = state.teacherEmotion ?: "",
+                            studentGuess = state.studentGuess ?: "",
+                            onNextRound = { viewModel.startNextRound() }
+                        )
+                    }
                 }
             }
 
@@ -135,21 +208,84 @@ fun NewPracticeScreen(
     if (showEndDialog) {
         AlertDialog(
             onDismissRequest = { showEndDialog = false },
-            title = { Text("End Practice Session?") },
+            icon = {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    "End Practice Session?",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
-                Text("Score: ${state.correctCount}/${state.totalCount} correct")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Session Summary",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "${state.correctCount}",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = CueSightColors.Green
+                            )
+                            Text("Correct", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "${state.totalCount}",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("Total", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val accuracy = if (state.totalCount > 0)
+                                (state.correctCount * 100 / state.totalCount) else 0
+                            Text(
+                                "$accuracy%",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text("Accuracy", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
             },
             confirmButton = {
-                Button(onClick = {
-                    showEndDialog = false
-                    viewModel.endSession()
-                }) {
-                    Text("End Session")
+                Button(
+                    onClick = {
+                        showEndDialog = false
+                        viewModel.endSession()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("End Session", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showEndDialog = false }) {
-                    Text("Cancel")
+                OutlinedButton(onClick = { showEndDialog = false }) {
+                    Text("Continue")
                 }
             }
         )
@@ -158,39 +294,117 @@ fun NewPracticeScreen(
 
 @Composable
 fun SessionStatsCard(correctCount: Int, totalCount: Int) {
+    val accuracy = if (totalCount > 0) (correctCount.toFloat() / totalCount.toFloat()) else 0f
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(24.dp)
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "Session Progress",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Animated correct count
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val animatedCorrect = remember { Animatable(0f) }
+                    LaunchedEffect(correctCount) {
+                        animatedCorrect.animateTo(
+                            correctCount.toFloat(),
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                        )
+                    }
+                    
+                    Text(
+                        text = "${animatedCorrect.value.toInt()}",
+                        fontSize = 42.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = CueSightColors.Green
+                    )
+                    Text(
+                        "Correct",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+                
                 Text(
-                    text = "$correctCount",
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CueSightColors.Green
+                    "/",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Light,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
                 )
-                Text("Correct", style = MaterialTheme.typography.bodyMedium)
+                
+                // Animated total count
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val animatedTotal = remember { Animatable(0f) }
+                    LaunchedEffect(totalCount) {
+                        animatedTotal.animateTo(
+                            totalCount.toFloat(),
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                        )
+                    }
+                    
+                    Text(
+                        text = "${animatedTotal.value.toInt()}",
+                        fontSize = 42.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Text(
+                        "Total",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                }
             }
             
-            Text("/", fontSize = 24.sp)
+            Spacer(Modifier.height(16.dp))
             
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "$totalCount",
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text("Total", style = MaterialTheme.typography.bodyMedium)
-            }
+            // Progress bar
+            LinearProgressIndicator(
+                progress = { accuracy },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+                color = CueSightColors.Green,
+                trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f),
+            )
+            
+            Spacer(Modifier.height(8.dp))
+            
+            Text(
+                "${(accuracy * 100).toInt()}% Accuracy",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         }
     }
 }
