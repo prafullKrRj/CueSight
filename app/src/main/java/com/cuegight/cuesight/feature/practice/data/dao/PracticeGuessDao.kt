@@ -2,6 +2,7 @@ package com.cuegight.cuesight.feature.practice.data.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy.Companion.REPLACE
 import androidx.room.Query
 import com.cuegight.cuesight.feature.practice.data.entity.PracticeGuess
 
@@ -41,5 +42,8 @@ interface PracticeGuessDao {
         ORDER BY pg.timestamp ASC
     """)
     suspend fun getByStudentIdAndEmotion(studentId: Long, emotion: String): List<PracticeGuess>
+
+    @Insert(onConflict = REPLACE)
+    fun insertAll(guesses: List<PracticeGuess>)
 }
 

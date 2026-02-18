@@ -33,5 +33,12 @@ interface PracticeSessionDao {
     
     @Query("SELECT COUNT(*) FROM practice_sessions WHERE studentId = :studentId")
     suspend fun getSessionCountByStudent(studentId: Long): Int
+
+
+
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+
+    suspend fun insertAll(sessions: List<PracticeSession>)
 }
 

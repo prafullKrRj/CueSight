@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -14,6 +15,7 @@ import com.cuegight.cuesight.feature.connection.ConnectionScreen
 import com.cuegight.cuesight.feature.practice.NewPracticeScreen
 import com.cuegight.cuesight.feature.splash.SplashScreen
 import com.cuegight.cuesight.feature.teaching.NewTeachingScreen
+import com.cuegight.cuesight.mock.MockTeachingScreen
 import com.cuegight.cuesight.navigation.Screen
 import com.cuegight.cuesight.ui.components.BottomNavTab
 import com.cuegight.cuesight.ui.screens.AddStudentScreen
@@ -22,11 +24,18 @@ import com.cuegight.cuesight.ui.screens.SettingsScreen
 import com.cuegight.cuesight.ui.screens.StudentDetailScreen
 import com.cuegight.cuesight.ui.screens.StudentsScreen
 import com.cuegight.cuesight.ui.theme.CueSightTheme
+import com.cuegight.cuesight.utils.MockDataPopulator
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 
 class MainActivity : ComponentActivity() {
+    private val mockDataPopulator: MockDataPopulator by inject()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+        lifecycleScope.launch {
+//             mockDataPopulator.populateMockData()
+            // Log.d("MainActivity", "Mock data populated for John")
+        }
         setContent {
             CueSightTheme {
                 CueSightApp()
@@ -191,6 +200,13 @@ fun CueSightApp() {
 
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("mock_teaching") {
+            MockTeachingScreen(
+                studentName = "John Doe",
                 onNavigateBack = { navController.popBackStack() }
             )
         }

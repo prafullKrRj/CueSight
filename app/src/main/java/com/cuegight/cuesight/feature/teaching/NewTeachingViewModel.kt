@@ -295,7 +295,7 @@ data class TeachingState(
     val sessionElapsedSeconds: Long = 0,
     val sessionStats: SessionStats? = null,
     val shouldNavigateBack: Boolean = false,
-    val useJpegStream: Boolean = false // NEW: indicates which stream type to use
+    val useJpegStream: Boolean = true // NEW: indicates which stream type to use
 )
 
 data class EmotionRecord(

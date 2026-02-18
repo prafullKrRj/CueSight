@@ -1,11 +1,7 @@
 package com.cuegight.cuesight.ui.screens
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,28 +13,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.outlined.Analytics
-import androidx.compose.material.icons.outlined.Cake
-import androidx.compose.material.icons.outlined.EventNote
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.MedicalServices
-import androidx.compose.material.icons.outlined.Notes
-import androidx.compose.material.icons.outlined.PlayCircle
-import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.School
-import androidx.compose.material.icons.outlined.ShowChart
-import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.rounded.Analytics
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.School
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -47,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -59,17 +44,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.cuegight.cuesight.data.database.SessionMode
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
+import java.io.File
 import java.util.Locale
 
 private const val AVERAGE_FORMAT = "%.1f"
@@ -83,15 +71,14 @@ fun StudentDetailScreen(
     onNavigateToAnalytics: (Long) -> Unit,
     viewModel: StudentViewModel = koinViewModel()
 ) {
+    val context = LocalContext.current
     val student by viewModel.getStudentById(studentId).collectAsState(initial = null)
     val sessions by viewModel.getSessionsByStudent(studentId).collectAsState(initial = emptyList())
 
-    val completedSessions = remember(sessions) {
-        sessions.filter { it.endTime != null }
-    }
-    val orderedSessions = remember(completedSessions) {
-        completedSessions.sortedBy { it.startTime }
-    }
+    // --- Core Logic (Unchanged) ---
+    val completedSessions = remember(sessions) { sessions.filter { it.endTime != null } }
+    val orderedSessions =
+        remember(completedSessions) { completedSessions.sortedBy { it.startTime } }
 
     val totalDurationSeconds = remember(orderedSessions) {
         orderedSessions.sumOf { session ->
@@ -99,9 +86,7 @@ fun StudentDetailScreen(
             if (endTime > 0) (endTime - session.startTime) / 1000 else 0L
         }
     }
-    val totalDurationLabel = remember(totalDurationSeconds) {
-        formatDuration(totalDurationSeconds)
-    }
+    val totalDurationLabel = remember(totalDurationSeconds) { formatDuration(totalDurationSeconds) }
     val averageGuesses = remember(orderedSessions) {
         if (orderedSessions.isEmpty()) 0f else {
             orderedSessions.sumOf { it.totalGuesses }.toFloat() / orderedSessions.size
@@ -111,613 +96,334 @@ fun StudentDetailScreen(
         String.format(Locale.US, AVERAGE_FORMAT, averageGuesses)
     }
 
-    // Animation states
-    var teachingPressed by remember { mutableStateOf(false) }
-    var practicePressed by remember { mutableStateOf(false) }
-    var analyticsPressed by remember { mutableStateOf(false) }
-
-    val teachingScale by animateFloatAsState(
-        targetValue = if (teachingPressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-    )
-    val practiceScale by animateFloatAsState(
-        targetValue = if (practicePressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-    )
-    val analyticsScale by animateFloatAsState(
-        targetValue = if (analyticsPressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-    )
-
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        student?.name ?: "Student Details",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp
-                    )
-                },
+            CenterAlignedTopAppBar(
+                title = { }, // Empty title for ultra-minimal look, or put name here
                 navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .shadow(4.dp, CircleShape)
-                            .background(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                CircleShape
-                            )
-                    ) {
+                    IconButton(onClick = onNavigateBack) {
                         Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            "Back",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back",
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent
                 )
             )
         }
     ) { padding ->
         if (student == null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(strokeWidth = 2.dp)
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-                contentPadding = PaddingValues(vertical = 20.dp)
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(32.dp),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
-                // Student Profile Card with Image
+                // 1. Profile Section (Clean, Centered, No Card)
                 item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(12.dp, RoundedCornerShape(28.dp)),
-                        shape = RoundedCornerShape(28.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                        )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Column(
+                        // Avatar
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .size(100.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center
                         ) {
-                            // Profile Image Section
-                            Box(
-                                modifier = Modifier
-                                    .size(120.dp)
-                                    .shadow(8.dp, CircleShape)
-                                    .clip(CircleShape)
-                                    .background(
-                                        brush = Brush.radialGradient(
-                                            colors = listOf(
-                                                MaterialTheme.colorScheme.primary,
-                                                MaterialTheme.colorScheme.tertiary
-                                            )
-                                        )
-                                    )
-                                    .border(
-                                        4.dp,
-                                        MaterialTheme.colorScheme.surface,
-                                        CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (student?.photoUri != null) {
-                                    AsyncImage(
-                                        model = student.photoUri,
-                                        contentDescription = "Photo of ${student.name}",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Text(
-                                        text = student?.name?.firstOrNull()?.uppercase() ?: "?",
-                                        style = MaterialTheme.typography.displayLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text(
-                                text = student?.name ?: "",
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(
-                                        horizontal = 16.dp,
-                                        vertical = 8.dp
-                                    ),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Cake,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Text(
-                                        text = "${student?.age} years old",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
-
-                            if (student?.diagnosis?.isNotEmpty() == true) {
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                InfoSection(
-                                    icon = Icons.Outlined.MedicalServices,
-                                    label = "Diagnosis",
-                                    content = student?.diagnosis ?: ""
-                                )
-                            }
-
-                            if (student?.notes?.isNotEmpty() == true) {
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                InfoSection(
-                                    icon = Icons.Outlined.Notes,
-                                    label = "Notes",
-                                    content = student?.notes ?: ""
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Stats Overview Card
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(8.dp, RoundedCornerShape(24.dp)),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(20.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.ShowChart,
+                            if (student?.photoUri != null && File(student?.photoUri!!).exists()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(File(student?.photoUri!!))
+                                        .crossfade(true)
+                                        .build(),
                                     contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
                                 )
-                                Text(
-                                    text = "Quick Stats",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(20.dp))
-
-                            if (orderedSessions.isEmpty()) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                                        .padding(16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Info,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                    Text(
-                                        text = "No sessions yet. Start a session to track progress!",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                }
                             } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    StatCard(
-                                        icon = Icons.Outlined.EventNote,
-                                        label = "Sessions",
-                                        value = "${orderedSessions.size}",
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    StatCard(
-                                        icon = Icons.Outlined.Psychology,
-                                        label = "Avg Guesses",
-                                        value = averageGuessesLabel,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                StatCard(
-                                    icon = Icons.Outlined.Timer,
-                                    label = "Total Practice Time",
-                                    value = totalDurationLabel,
-                                    modifier = Modifier.fillMaxWidth()
+                                Text(
+                                    text = student?.name?.firstOrNull()?.uppercase() ?: "",
+                                    style = MaterialTheme.typography.displayMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Text(
+                            text = student?.name ?: "",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Text(
+                            text = "${student?.age} years • ${student?.diagnosis ?: "No diagnosis"}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+
+                        if (!student?.notes.isNullOrEmpty()) {
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text = student?.notes ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceContainer,
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
                         }
                     }
                 }
 
-                // Analytics Navigation Card
+                // 2. Stats Section (Horizontal Row, No Card)
+                item {
+                    if (orderedSessions.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            MinimalStat(
+                                label = "Sessions",
+                                value = orderedSessions.size.toString(),
+                                modifier = Modifier.weight(1f)
+                            )
+                            MinimalStat(
+                                label = "Avg Guesses",
+                                value = averageGuessesLabel,
+                                modifier = Modifier.weight(1f)
+                            )
+                            MinimalStat(
+                                label = "Time",
+                                value = totalDurationLabel,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "No sessions recorded yet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                // 3. Analytics Button (If data exists)
                 if (orderedSessions.isNotEmpty()) {
                     item {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .scale(analyticsScale)
-                                .shadow(8.dp, RoundedCornerShape(24.dp))
-                                .clickable {
-                                    analyticsPressed = true
-                                    onNavigateToAnalytics(studentId)
-                                    analyticsPressed = false
-                                },
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(20.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .background(
-                                                MaterialTheme.colorScheme.tertiary,
-                                                RoundedCornerShape(16.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.Analytics,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(28.dp),
-                                            tint = MaterialTheme.colorScheme.onTertiary
-                                        )
-                                    }
+                        ActionRow(
+                            title = "View Analytics",
+                            icon = Icons.Rounded.Analytics,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            onClick = { onNavigateToAnalytics(studentId) }
+                        )
+                    }
+                }
 
-                                    Column {
-                                        Text(
-                                            text = "Detailed Analytics",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                                        )
-                                        Text(
-                                            text = "View charts and insights",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(
-                                                alpha = 0.7f
-                                            )
-                                        )
-                                    }
-                                }
+                // 4. Session Actions Header
+                item {
+                    Text(
+                        text = "Start Session",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
 
-                                Icon(
-                                    Icons.Default.ArrowForward,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                // 5. Session Mode Buttons (Full Width, Large Touch Targets)
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        LargeActionCard(
+                            title = "Teaching Mode",
+                            subtitle = "Demonstrate emotions",
+                            icon = Icons.Rounded.School,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            onClick = {
+                                onNavigateToSession(
+                                    studentId,
+                                    student?.name ?: "",
+                                    SessionMode.TEACHING.name
                                 )
                             }
-                        }
-                    }
-                }
-
-                // Session Modes Section Header
-                item {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Outlined.PlayCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = "Start Training Session",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+
+                        LargeActionCard(
+                            title = "Practice Mode",
+                            subtitle = "Independent practice",
+                            icon = Icons.Rounded.Psychology,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            onClick = {
+                                onNavigateToSession(
+                                    studentId,
+                                    student?.name ?: "",
+                                    SessionMode.PRACTICE.name
+                                )
+                            }
                         )
                     }
-                }
-
-                // Teaching Mode Card
-                item {
-                    SessionModeCard(
-                        title = "Teaching Mode",
-                        description = "Therapist demonstrates emotions to the student",
-                        icon = Icons.Outlined.School,
-                        gradientColors = listOf(
-                            MaterialTheme.colorScheme.primary,
-                            MaterialTheme.colorScheme.primaryContainer
-                        ),
-                        buttonColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        scale = teachingScale,
-                        onClick = {
-                            teachingPressed = true
-                            onNavigateToSession(
-                                studentId,
-                                student?.name ?: "",
-                                SessionMode.TEACHING.name
-                            )
-                            teachingPressed = false
-                        }
-                    )
-                }
-
-                // Practice Mode Card
-                item {
-                    SessionModeCard(
-                        title = "Practice Mode",
-                        description = "Student practices expressing emotions independently",
-                        icon = Icons.Outlined.Psychology,
-                        gradientColors = listOf(
-                            MaterialTheme.colorScheme.secondary,
-                            MaterialTheme.colorScheme.secondaryContainer
-                        ),
-                        buttonColor = MaterialTheme.colorScheme.secondary,
-                        contentColor = MaterialTheme.colorScheme.onSecondary,
-                        scale = practiceScale,
-                        onClick = {
-                            practicePressed = true
-                            onNavigateToSession(
-                                studentId,
-                                student?.name ?: "",
-                                SessionMode.PRACTICE.name
-                            )
-                            practicePressed = false
-                        }
-                    )
                 }
             }
         }
     }
 }
 
+// --- Minimalist Helper Composables ---
+
 @Composable
-private fun InfoSection(
-    icon: ImageVector,
+fun MinimalStat(
     label: String,
-    content: String
+    value: String,
+    modifier: Modifier = Modifier
 ) {
     Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 0.5.sp
+        )
+    }
+}
+
+@Composable
+fun ActionRow(
+    title: String,
+    icon: ImageVector,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
             Icon(
-                imageVector = icon,
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
-        ) {
-            Text(
-                text = content,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.padding(12.dp)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
 @Composable
-private fun StatCard(
+fun LargeActionCard(
+    title: String,
+    subtitle: String,
     icon: ImageVector,
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier
+    containerColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit
 ) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(targetValue = if (isPressed) 0.98f else 1f, label = "scale")
+
     Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-        shadowElevation = 2.dp
+        onClick = { onClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .scale(scale),
+        shape = RoundedCornerShape(24.dp),
+        color = containerColor,
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icon in a subtle circle
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                        RoundedCornerShape(12.dp)
-                    ),
+                    .size(48.dp)
+                    .background(contentColor.copy(alpha = 0.1f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = contentColor,
+                    modifier = Modifier.size(24.dp)
                 )
             }
-            Column {
+
+            Spacer(Modifier.width(20.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                Text(
-                    text = value,
+                    text = title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = contentColor
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor.copy(alpha = 0.7f)
                 )
             }
-        }
-    }
-}
 
-@Composable
-private fun SessionModeCard(
-    title: String,
-    description: String,
-    icon: ImageVector,
-    gradientColors: List<androidx.compose.ui.graphics.Color>,
-    buttonColor: androidx.compose.ui.graphics.Color,
-    contentColor: androidx.compose.ui.graphics.Color,
-    scale: Float,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .scale(scale)
-            .shadow(12.dp, RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = gradientColors[1]
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .background(
-                            brush = Brush.radialGradient(gradientColors),
-                            shape = RoundedCornerShape(18.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        tint = contentColor
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Button(
-                onClick = onClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .shadow(8.dp, RoundedCornerShape(16.dp)),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = buttonColor
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        "Start Session",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            Icon(
+                Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = contentColor.copy(alpha = 0.5f)
+            )
         }
     }
 }

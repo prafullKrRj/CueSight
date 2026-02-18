@@ -1,6 +1,7 @@
 package com.cuegight.cuesight.feature.analytics
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,15 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
@@ -50,18 +50,26 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.cuegight.cuesight.data.model.Student
-import com.cuegight.cuesight.ui.theme.CueSightColors
 import com.cuegight.cuesight.feature.practice.domain.model.CwaResult
 import com.cuegight.cuesight.feature.practice.domain.model.ErpiResult
 import com.cuegight.cuesight.feature.practice.domain.model.MasteryResult
+import com.cuegight.cuesight.feature.practice.ui.components.WeightAdjustmentDialog
+import com.cuegight.cuesight.ui.theme.CueSightColors
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import java.io.File
 
 /**
  * Student Analytics Dashboard Screen
@@ -83,10 +91,10 @@ fun StudentAnalyticsDashboardScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
-    
+
     var showWeightDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
-    
+
     if (showWeightDialog && state.cwaResult != null) {
         WeightAdjustmentDialog(
             currentWeights = state.cwaResult!!.weights,
@@ -108,7 +116,7 @@ fun StudentAnalyticsDashboardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Text(
                         text = state.student?.name ?: "Student Analytics",
                         style = MaterialTheme.typography.titleLarge
@@ -169,7 +177,7 @@ fun StudentAnalyticsDashboardScreen(
             }
         }
     }
-    
+
     if (showExportDialog) {
         ExportDataDialog(
             onDismiss = { showExportDialog = false },
@@ -197,11 +205,11 @@ private fun StudentAnalyticsContent(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp)
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
     ) {
-        // Student Profile Card
-        item {
+        // Student Profile Card - Always present
+        item(key = "profile_card") {
             StudentProfileCard(
                 student = state.student!!,
                 sessionCount = state.sessionCount,
@@ -209,81 +217,46 @@ private fun StudentAnalyticsContent(
                 averageResponseTime = state.averageResponseTime
             )
         }
-        
-        // Overall Stats Card
-        item {
+
+        // Overall Stats Card - Always present
+        item(key = "overall_stats") {
             OverallStatsCard(
                 erpiResult = state.erpiResult,
                 cwaResult = state.cwaResult,
                 overallAccuracy = state.overallAccuracy
             )
         }
-        
-        // Learning Trajectory (ERPI) with chart
+
+        // Learning Trajectory - Conditionally render entire item
         if (state.erpiResult != null && state.sessionAccuracies.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.TrendingUp, null, modifier = Modifier.size(32.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                "Learning Trajectory (ERPI)",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(Modifier.height(16.dp))
-                        
-                        Text(
-                            text = "ERPI Score: %.3f".format(state.erpiResult.erpiScore),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = getErpiScoreColor(state.erpiResult.erpiScore)
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        
-                        Text(
-                            text = state.erpiResult.interpretation,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        
-                        // Professional line chart
-                        LearningCurveChart(
-                            accuracies = state.sessionAccuracies,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
+            item(key = "learning_curve") {
+                LearningTrajectoryCardEnhanced(
+                    erpiResult = state.erpiResult,
+                    sessionAccuracies = state.sessionAccuracies
+                )
             }
         }
-        
-        // Per-Emotion Mastery
+
+        // Per-Emotion Mastery - Conditionally render entire item
         if (state.masteryResult != null) {
-            item {
+            item(key = "emotion_mastery") {
                 EmotionMasteryCard(masteryResult = state.masteryResult)
             }
         }
-        
-        // Confusion Matrix with enhanced heatmap
+
+        // Confusion Matrix - Conditionally render entire item
         if (state.confusionMatrix.isNotEmpty()) {
-            item {
+            item(key = "confusion_matrix") {
                 ConfusionMatrixCardEnhanced(
                     confusionMatrix = state.confusionMatrix,
                     mostConfusedPairs = state.mostConfusedPairs
                 )
             }
         }
-        
-        // Response Time Distribution with histogram
+
+        // Response Time - Conditionally render entire item
         if (state.responseTimeDistribution.isNotEmpty()) {
-            item {
+            item(key = "response_time") {
                 ResponseTimeCardEnhanced(
                     distribution = state.responseTimeDistribution,
                     averageResponseTime = state.averageResponseTime,
@@ -292,30 +265,107 @@ private fun StudentAnalyticsContent(
                 )
             }
         }
-        
-        // CWA Insights
+
+        // CWA Insights - Conditionally render entire item
         if (state.cwaResult != null) {
-            item {
+            item(key = "cwa_insights") {
                 CWAInsightsCard(
                     cwaResult = state.cwaResult,
                     onAdjustWeights = onAdjustWeights
                 )
             }
         }
-        
-        // Session Timeline
+
+        // Session History Header and Items - Conditionally render
         if (state.sessionHistory.isNotEmpty()) {
-            item {
+            item(key = "history_header") {
                 Text(
-                    text = "Practice Session Timeline",
+                    text = "History",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                 )
             }
-            items(state.sessionHistory) { session ->
+
+            // Session History Items
+            items(
+                items = state.sessionHistory,
+                key = { session -> "session_${session.sessionId}" }
+            ) { session ->
                 SessionHistoryCard(session = session)
             }
+        }
+    }
+}
+
+@Composable
+private fun LearningTrajectoryCardEnhanced(
+    erpiResult: ErpiResult,
+    sessionAccuracies: List<Float>
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.TrendingUp,
+                            null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    "Learning Trajectory",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "%.3f".format(erpiResult.erpiScore),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = getErpiScoreColor(erpiResult.erpiScore)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "ERPI Score",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = erpiResult.interpretation,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(24.dp))
+
+            // Professional line chart
+            LearningCurveChart(
+                accuracies = sessionAccuracies,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+            )
         }
     }
 }
@@ -327,55 +377,83 @@ private fun StudentProfileCard(
     totalGuesses: Int,
     averageResponseTime: Long
 ) {
+    val context = LocalContext.current
+
     Card(
         modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = MaterialTheme.colorScheme.primary
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar
+            // Avatar with photo or initial
             Surface(
-                modifier = Modifier.size(80.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primary
+                modifier = Modifier.size(72.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f),
+                border = androidx.compose.foundation.BorderStroke(
+                    2.dp,
+                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
+                )
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = student.name.firstOrNull()?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.displayMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.Bold
+                if (!student.photoUri.isNullOrEmpty() && File(student.photoUri).exists()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(File(student.photoUri))
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Photo of ${student.name}",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
                     )
+                } else {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = student.name.firstOrNull()?.uppercase() ?: "?",
+                            style = MaterialTheme.typography.displaySmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
-            
+
             // Info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = student.name,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Age ${student.age} • ${sessionCount} sessions completed",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                )
-                if (totalGuesses > 0) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "Age ${student.age}",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "$totalGuesses total guesses • Avg ${averageResponseTime}ms response",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                        text = "$sessionCount Sessions",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
                     )
                 }
             }
@@ -391,44 +469,67 @@ private fun OverallStatsCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp)
+                .padding(24.dp)
         ) {
             Text(
-                text = "Quick Stats",
+                text = "Performance Overview",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
+                color = MaterialTheme.colorScheme.onSurface
             )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
+
+            Spacer(modifier = Modifier.height(20.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 StatItem(
                     label = "ERPI",
-                    value = erpiResult?.let { "%.3f".format(it.erpiScore) } ?: "—",
-                    color = erpiResult?.let { getErpiScoreColor(it.erpiScore) } ?: MaterialTheme.colorScheme.onSecondaryContainer
+                    value = erpiResult?.let { "%.2f".format(it.erpiScore) } ?: "—",
+                    color = erpiResult?.let { getErpiScoreColor(it.erpiScore) }
+                        ?: MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
                 )
-                
+
+                // Vertical divider
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(40.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                        .align(Alignment.CenterVertically)
+                )
+
                 StatItem(
-                    label = "Overall Accuracy",
+                    label = "Accuracy",
                     value = "${(overallAccuracy * 100).toInt()}%",
-                    color = getAccuracyColor(overallAccuracy)
+                    color = getAccuracyColor(overallAccuracy),
+                    modifier = Modifier.weight(1f)
                 )
-                
+
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(40.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                        .align(Alignment.CenterVertically)
+                )
+
                 StatItem(
                     label = "CWA Score",
                     value = cwaResult?.let { "${(it.cwaScore * 100).toInt()}%" } ?: "—",
-                    color = cwaResult?.let { getCwaScoreColor(it.cwaScore) } ?: MaterialTheme.colorScheme.onSecondaryContainer
+                    color = cwaResult?.let { getCwaScoreColor(it.cwaScore) }
+                        ?: MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -439,24 +540,29 @@ private fun OverallStatsCard(
 private fun StatItem(
     label: String,
     value: String,
-    color: Color
+    color: Color,
+    modifier: Modifier = Modifier
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+    ) {
         Text(
             text = value,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = color
         )
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium
         )
     }
 }
 
-// Placeholder composables for other cards - will be implemented fully
 @Composable
 private fun LearningTrajectoryCard(erpiResult: ErpiResult) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -471,7 +577,7 @@ private fun LearningTrajectoryCard(erpiResult: ErpiResult) {
                 )
             }
             Spacer(Modifier.height(16.dp))
-            
+
             Text(
                 text = "ERPI Score: %.3f".format(erpiResult.erpiScore),
                 style = MaterialTheme.typography.headlineMedium,
@@ -479,13 +585,13 @@ private fun LearningTrajectoryCard(erpiResult: ErpiResult) {
                 color = getErpiScoreColor(erpiResult.erpiScore)
             )
             Spacer(Modifier.height(8.dp))
-            
+
             Text(
                 text = erpiResult.interpretation,
                 style = MaterialTheme.typography.bodyLarge
             )
             Spacer(Modifier.height(8.dp))
-            
+
             Text(
                 text = "Improvement rate: %.4f per session".format(erpiResult.slope),
                 style = MaterialTheme.typography.bodyMedium,
@@ -497,46 +603,135 @@ private fun LearningTrajectoryCard(erpiResult: ErpiResult) {
 
 @Composable
 private fun EmotionMasteryCard(masteryResult: MasteryResult) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(20.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Psychology, null, modifier = Modifier.size(32.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "Emotion Mastery",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Psychology,
+                            null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text(
+                        "Emotion Mastery",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${(masteryResult.aggregateMastery * 100).toInt()}% Overall",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "Overall Mastery: ${(masteryResult.aggregateMastery * 100).toInt()}%",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(16.dp))
-            
-            // Professional bar chart instead of mastery rings
+
+            Spacer(Modifier.height(24.dp))
+
+            // Chart placeholder/implementation
             EmotionAccuracyChart(
                 emotionScores = masteryResult.perEmotionScores,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column {
-                    Text("Strongest:", style = MaterialTheme.typography.bodySmall)
-                    Text(masteryResult.strongestEmotion, fontWeight = FontWeight.Bold, color = CueSightColors.Green)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Weakest:", style = MaterialTheme.typography.bodySmall)
-                    Text(masteryResult.weakestEmotion, fontWeight = FontWeight.Bold, color = CueSightColors.Red)
-                }
+                EmotionInsightBox(
+                    label = "Strongest Area",
+                    emotion = masteryResult.strongestEmotion,
+                    color = CueSightColors.Green,
+                    modifier = Modifier.weight(1f)
+                )
+                EmotionInsightBox(
+                    label = "Needs Focus",
+                    emotion = masteryResult.weakestEmotion,
+                    color = CueSightColors.Red,
+                    modifier = Modifier.weight(1f)
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun EmotionInsightBox(
+    label: String,
+    emotion: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        color = color.copy(alpha = 0.1f),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = emotion,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnimatedStatCard(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -619,28 +814,45 @@ private fun CWAInsightsCard(
     cwaResult: CwaResult,
     onAdjustWeights: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Confusion-Weighted Accuracy (CWA)",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "${(cwaResult.cwaScore * 100).toInt()}%",
-                style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = onAdjustWeights) {
-                Icon(Icons.Default.Settings, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Adjust Emotion Weights")
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Weighted Accuracy (CWA)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Adjusted for clinical relevance",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "${(cwaResult.cwaScore * 100).toInt()}%",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = getCwaScoreColor(cwaResult.cwaScore)
+                )
+                TextButton(
+                    onClick = onAdjustWeights,
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text("Adjust Weights")
+                }
             }
         }
     }
@@ -650,8 +862,14 @@ private fun CWAInsightsCard(
 private fun SessionHistoryCard(session: SessionHistoryItem) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
         )
     ) {
         Row(
@@ -661,31 +879,46 @@ private fun SessionHistoryCard(session: SessionHistoryItem) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = session.formattedDate,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "${session.correctGuesses}/${session.totalGuesses} correct",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "${session.correctGuesses}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = session.formattedDate,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "${session.totalGuesses} total attempts",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            
+
             // Accuracy badge
             Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = when {
-                    getAccuracyColor(session.accuracy)
-                ) {
+                shape = MaterialTheme.shapes.small,
+                color = getAccuracyColor(session.accuracy).copy(alpha = 0.15f)
+            ) {
                 Text(
                     text = "${(session.accuracy * 100).toInt()}%",
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
+                    color = getAccuracyColor(session.accuracy).copy(alpha = 1f), // Ensure text is visible
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -705,7 +938,7 @@ private fun ErrorView(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Icon(
-            Icons.Default.Error,
+            Icons.Default.BarChart,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
             tint = MaterialTheme.colorScheme.error
@@ -718,7 +951,8 @@ private fun ErrorView(
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center
         )
         Button(onClick = onRetry) {
             Text("Retry")
@@ -751,7 +985,7 @@ private fun EmptyDataView(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -763,7 +997,7 @@ private fun WeightAdjustmentDialog(
     onSave: (Map<String, Float>) -> Unit
 ) {
     var weights by remember { mutableStateOf(currentWeights) }
-    
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Adjust Emotion Weights") },
@@ -774,7 +1008,7 @@ private fun WeightAdjustmentDialog(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
-                
+
                 weights.forEach { (emotion, weight) ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -793,7 +1027,7 @@ private fun WeightAdjustmentDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                
+
                 Text(
                     "Sum: %.2f".format(weights.values.sum()),
                     style = MaterialTheme.typography.bodySmall,
@@ -871,7 +1105,7 @@ private fun ResponseTimeCardEnhanced(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
@@ -894,9 +1128,9 @@ private fun ResponseTimeCardEnhanced(
                     modifier = Modifier.weight(1f)
                 )
             }
-            
+
             Spacer(Modifier.height(16.dp))
-            
+
             // Professional column chart
             ResponseTimeChart(
                 distribution = distribution,
@@ -980,5 +1214,71 @@ private fun getCwaScoreColor(cwaScore: Float): Color {
         cwaScore >= 0.7f -> CueSightColors.Green  // High CWA
         cwaScore >= 0.5f -> CueSightColors.Orange  // Moderate CWA
         else -> CueSightColors.Red  // Low CWA
+    }
+}
+
+@Composable
+fun ConfusionMatrixHeatmap(
+    confusionMatrix: Map<String, Map<String, Int>>,
+    emotions: List<String>,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        // Wrapper for specialized matrix grid
+        // Using simple Canvas drawing for Heatmap as Vico doesn't support heatmaps natively yet
+
+        // Header Row
+        Row {
+            Spacer(modifier = Modifier.width(60.dp)) // Corner space
+            emotions.forEach { emotion ->
+                Text(
+                    text = emotion.take(3),
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1
+                )
+            }
+        }
+
+        emotions.forEach { actualEmotion ->
+            Row(modifier = Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Row Label
+                Text(
+                    text = actualEmotion.take(3),
+                    modifier = Modifier.width(60.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // Cells
+                val rowData = confusionMatrix[actualEmotion] ?: emptyMap()
+                emotions.forEach { predictedEmotion ->
+                    val count = rowData[predictedEmotion] ?: 0
+                    val total = rowData.values.sum().toFloat().coerceAtLeast(1f)
+                    val intensity = (count / total)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .padding(1.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = intensity * 0.8f + 0.1f),
+                                shape = MaterialTheme.shapes.extraSmall
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (count > 0) {
+                            Text(
+                                text = count.toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (intensity > 0.5f) Color.White else Color.Black
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

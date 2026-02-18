@@ -231,4 +231,11 @@ class PracticeRepository(
             }
         }
     }
+    suspend fun insertSessions(sessions: List<PracticeSession>) {
+        practiceSessionDao.insertAll(sessions)
+    }
+    suspend fun insertGuesses(guesses: List<PracticeGuess>) {
+        practiceGuessDao.insertAll(guesses)
+    }
+
 }

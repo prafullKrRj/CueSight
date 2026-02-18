@@ -3,62 +3,41 @@ package com.cuegight.cuesight.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Cake
-import androidx.compose.material.icons.outlined.CameraAlt
-import androidx.compose.material.icons.outlined.Error
-import androidx.compose.material.icons.outlined.MedicalServices
-import androidx.compose.material.icons.outlined.Notes
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.PersonAdd
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AddAPhoto
+import androidx.compose.material.icons.rounded.Cake
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Notes
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -68,17 +47,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
+import com.cuegight.cuesight.utils.ImageUtils
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
 
@@ -88,481 +65,193 @@ fun AddStudentScreen(
     onNavigateBack: () -> Unit,
     viewModel: StudentViewModel = koinViewModel()
 ) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var age by remember { mutableStateOf("") }
     var diagnosis by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
-    var nameError by remember { mutableStateOf<String?>(null) }
-    var ageError by remember { mutableStateOf<String?>(null) }
+    var savedPhotoPath by remember { mutableStateOf<String?>(null) }
 
-    // Image picker launcher
+    // Validation state
+    var nameError by remember { mutableStateOf(false) }
+    var ageError by remember { mutableStateOf(false) }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         photoUri = uri
+        uri?.let {
+            savedPhotoPath = ImageUtils.saveImageToInternalStorage(context, it)
+        }
     }
 
-    // Animation states
-    var buttonPressed by remember { mutableStateOf(false) }
-    val buttonScale by animateFloatAsState(
-        targetValue = if (buttonPressed) 0.95f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        )
-    )
-
-    // Gradient colors - Beautiful purple to pink gradient
-    val gradientColors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.primaryContainer,
-        MaterialTheme.colorScheme.secondary,
-        MaterialTheme.colorScheme.tertiary
-    )
-
-    val infiniteTransition = rememberInfiniteTransition(label = "gradient")
-    val animatedOffset by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "offset"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.linearGradient(
-                    colors = gradientColors,
-                    start = androidx.compose.ui.geometry.Offset(animatedOffset, animatedOffset),
-                    end = androidx.compose.ui.geometry.Offset(
-                        animatedOffset + 1000f,
-                        animatedOffset + 1000f
-                    )
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("New Student", fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent
                 )
             )
-    ) {
-        Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.PersonAdd,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Text(
-                                "Add New Student",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = onNavigateBack,
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .shadow(8.dp, RoundedCornerShape(12.dp))
-                                .background(
-                                    Color.White.copy(alpha = 0.2f),
-                                    RoundedCornerShape(12.dp)
-                                )
-                        ) {
-                            Icon(
-                                Icons.Default.ArrowBack,
-                                "Back",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent
-                    )
-                )
-            }
-        ) { padding ->
-            Column(
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // 1. Photo Upload (Clean & Central)
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                    .padding(top = 16.dp)
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable { imagePickerLauncher.launch("image/*") },
+                contentAlignment = Alignment.Center
             ) {
-                // Glassmorphic card container
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .shadow(24.dp, RoundedCornerShape(28.dp)),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                if (photoUri != null) {
+                    Image(
+                        painter = rememberAsyncImagePainter(photoUri),
+                        contentDescription = "Photo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp)
-                    ) {
-                        Text(
-                            "Student Information",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
-                        // Photo Upload Section
-                        PhotoUploadSection(
-                            photoUri = photoUri,
-                            onPickImage = { imagePickerLauncher.launch("image/*") }
-                        )
-
-                        // Name Field with Icon
-                        AestheticTextField(
-                            value = name,
-                            onValueChange = {
-                                name = it
-                                nameError = null
-                            },
-                            label = "Full Name",
-                            icon = Icons.Outlined.Person,
-                            isError = nameError != null,
-                            errorMessage = nameError,
-                            required = true
-                        )
-
-                        // Age Field with Icon
-                        AestheticTextField(
-                            value = age,
-                            onValueChange = {
-                                if (it.isEmpty() || it.all { char -> char.isDigit() }) {
-                                    age = it
-                                    ageError = null
-                                }
-                            },
-                            label = "Age",
-                            icon = Icons.Outlined.Cake,
-                            isError = ageError != null,
-                            errorMessage = ageError,
-                            keyboardType = KeyboardType.Number,
-                            required = true
-                        )
-
-                        // Diagnosis Field with Icon
-                        AestheticTextField(
-                            value = diagnosis,
-                            onValueChange = { diagnosis = it },
-                            label = "Diagnosis",
-                            icon = Icons.Outlined.MedicalServices,
-                            required = false
-                        )
-
-                        // Notes Field with Icon
-                        AestheticTextField(
-                            value = notes,
-                            onValueChange = { notes = it },
-                            label = "Additional Notes",
-                            icon = Icons.Outlined.Notes,
-                            maxLines = 4,
-                            minHeight = 120.dp,
-                            required = false
-                        )
-                    }
-                }
-
-                // Stunning gradient button
-                Button(
-                    onClick = {
-                        buttonPressed = true
-                        var hasError = false
-
-                        if (name.isBlank()) {
-                            nameError = "Name is required"
-                            hasError = true
-                        }
-
-                        if (age.isBlank()) {
-                            ageError = "Age is required"
-                            hasError = true
-                        } else if (age.toIntOrNull() == null || age.toInt() < 1 || age.toInt() > 150) {
-                            ageError = "Please enter a valid age"
-                            hasError = true
-                        }
-
-                        if (!hasError) {
-                            viewModel.addStudent(
-                                name = name.trim(),
-                                age = age.toInt(),
-                                diagnosis = diagnosis.trim(),
-                                notes = notes.trim(),
-                                photoUri = photoUri?.toString()
-                            )
-                            onNavigateBack()
-                        }
-
-                        buttonPressed = false
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .scale(buttonScale)
-                        .shadow(16.dp, RoundedCornerShape(20.dp)),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent
-                    ),
-                    contentPadding = PaddingValues(0.dp),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
+                    // Overlay edit icon
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                )
-                            ),
+                            .background(Color.Black.copy(alpha = 0.3f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Add,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Text(
-                                "Add Student",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
+                        Icon(
+                            Icons.Rounded.Edit,
+                            contentDescription = "Edit",
+                            tint = Color.White
+                        )
+                    }
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Rounded.AddAPhoto,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Add Photo",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
-        }
-    }
-}
 
-@Composable
-fun PhotoUploadSection(
-    photoUri: Uri?,
-    onPickImage: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Photo preview or placeholder
-        Box(
-            modifier = Modifier
-                .size(120.dp)
-                .shadow(12.dp, CircleShape)
-                .clip(CircleShape)
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.secondaryContainer
-                        )
+            // 2. Input Fields
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Name
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        nameError = false
+                    },
+                    label = { Text("Full Name") },
+                    leadingIcon = { Icon(Icons.Rounded.Person, null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    isError = nameError,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    singleLine = true
+                )
+
+                // Age & Diagnosis Row
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    OutlinedTextField(
+                        value = age,
+                        onValueChange = {
+                            if (it.all { char -> char.isDigit() }) {
+                                age = it
+                                ageError = false
+                            }
+                        },
+                        label = { Text("Age") },
+                        leadingIcon = { Icon(Icons.Rounded.Cake, null) },
+                        modifier = Modifier.weight(0.4f),
+                        shape = RoundedCornerShape(16.dp),
+                        isError = ageError,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
                     )
-                )
-                .border(
-                    width = 3.dp,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                    shape = CircleShape
-                )
-                .clickable(onClick = onPickImage),
-            contentAlignment = Alignment.Center
-        ) {
-            if (photoUri != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(photoUri),
-                    contentDescription = "Student Photo",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.CameraAlt,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        "Add Photo",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                    OutlinedTextField(
+                        value = diagnosis,
+                        onValueChange = { diagnosis = it },
+                        label = { Text("Diagnosis (Optional)") },
+                        modifier = Modifier.weight(0.6f),
+                        shape = RoundedCornerShape(16.dp),
+                        singleLine = true
                     )
                 }
-            }
-        }
 
-        // Upload button
-        Card(
-            modifier = Modifier
-                .clickable(onClick = onPickImage)
-                .shadow(4.dp, RoundedCornerShape(12.dp)),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.PhotoLibrary,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = if (photoUri != null) "Change Photo" else "Select Photo",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                // Notes
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes") },
+                    leadingIcon = { Icon(Icons.Rounded.Notes, null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
                 )
             }
-        }
-    }
-}
 
-@Composable
-fun AestheticTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false,
-    errorMessage: String? = null,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    maxLines: Int = 1,
-    minHeight: androidx.compose.ui.unit.Dp = 56.dp,
-    required: Boolean = false
-) {
-    Column(modifier = modifier) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = minHeight)
-                .shadow(
-                    elevation = if (isError) 0.dp else 8.dp,
-                    shape = RoundedCornerShape(16.dp)
-                ),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isError)
-                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                else
-                    MaterialTheme.colorScheme.surface
-            ),
-            border = if (isError)
-                androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.error)
-            else null
-        ) {
-            Row(
+            Spacer(Modifier.weight(1f))
+
+            // 3. Save Button
+            Button(
+                onClick = {
+                    val isNameValid = name.isNotBlank()
+                    val isAgeValid = age.isNotBlank() && (age.toIntOrNull() ?: 0) in 1..120
+
+                    if (isNameValid && isAgeValid) {
+                        viewModel.addStudent(
+                            name = name.trim(),
+                            age = age.toInt(),
+                            diagnosis = diagnosis.trim(),
+                            notes = notes.trim(),
+                            photoUri = savedPhotoPath
+                        )
+                        onNavigateBack()
+                    } else {
+                        nameError = !isNameValid
+                        ageError = !isAgeValid
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(bottom = 24.dp)
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (required) "$label *" else label,
-                        fontSize = 12.sp,
-                        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    BasicTextField(
-                        value = value,
-                        onValueChange = onValueChange,
-                        textStyle = LocalTextStyle.current.copy(
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Medium
-                        ),
-                        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                        maxLines = maxLines,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp)
-                    ) { innerTextField ->
-                        if (value.isEmpty()) {
-                            Text(
-                                text = "Enter $label",
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.outlineVariant
-                            )
-                        }
-                        innerTextField()
-                    }
-                }
-            }
-        }
-
-        // Error message
-        AnimatedVisibility(
-            visible = isError && errorMessage != null,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Row(
-                modifier = Modifier
-                    .padding(start = 16.dp, top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Error,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = errorMessage ?: "",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Medium
-                )
+                Text("Save Student", style = MaterialTheme.typography.titleMedium)
             }
         }
     }

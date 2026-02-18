@@ -5,10 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,7 +26,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -212,34 +209,34 @@ private fun StudentAnalyticsCard(
 
             // Progress indicator
             Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Overall Progress",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = "75%",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { 0.75f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
+//                Row(
+//                    modifier = Modifier.fillMaxWidth(),
+//                    horizontalArrangement = Arrangement.SpaceBetween
+//                ) {
+//                    Text(
+//                        text = "Overall Progress",
+//                        style = MaterialTheme.typography.labelLarge,
+//                        fontSize = 13.sp,
+//                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+//                    )
+//                    Text(
+//                        text = "75%",
+//                        style = MaterialTheme.typography.labelLarge,
+//                        fontWeight = FontWeight.Bold,
+//                        fontSize = 13.sp,
+//                        color = MaterialTheme.colorScheme.primary
+//                    )
+//                }
+//                Spacer(modifier = Modifier.height(8.dp))
+//                LinearProgressIndicator(
+//                    progress = { 0.75f },
+//                    modifier = Modifier
+//                        .fillMaxWidth()
+//                        .height(8.dp),
+//                    color = MaterialTheme.colorScheme.primary,
+//                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+//                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+//                )
             }
         }
     }

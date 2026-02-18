@@ -2,7 +2,11 @@ package com.cuegight.cuesight.ui.screens
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import com.cuegight.cuesight.feature.analytics.AnalyticsScreen
@@ -18,7 +22,7 @@ fun MainScreen(
     navController: NavHostController,
     initialTab: BottomNavTab = BottomNavTab.STUDENTS
 ) {
-    var selectedTab by remember { mutableStateOf(initialTab) }
+    var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
 
     Scaffold(
         bottomBar = {
