@@ -8,10 +8,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
 import com.cuegight.cuesight.feature.analytics.AnalyticsScreen
 import com.cuegight.cuesight.ui.components.BottomNavBar
 import com.cuegight.cuesight.ui.components.BottomNavTab
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 
 /**
  * Main screen wrapper with bottom navigation
@@ -25,6 +27,8 @@ fun MainScreen(
     var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
 
     Scaffold(
+        containerColor = SkyBluePalette.Sky50,
+        contentColor = Color.Unspecified,
         bottomBar = {
             BottomNavBar(
                 selectedTab = selectedTab,
@@ -61,7 +65,8 @@ fun MainScreen(
             BottomNavTab.SETTINGS -> {
                 SettingsScreen(
                     onNavigateBack = { }, // No back button when in bottom nav
-                    showBackButton = false
+                    showBackButton = false,
+                    modifier = Modifier.padding(paddingValues)
                 )
             }
         }

@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.cuegight.cuesight.data.database.SessionMode
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
@@ -124,11 +126,34 @@ fun StudentDetailScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(SkyBluePalette.Sky100, SkyBluePalette.Sky50)))
                     .padding(padding)
                     .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(32.dp),
                 contentPadding = PaddingValues(bottom = 40.dp)
             ) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        color = SkyBluePalette.Sky200.copy(alpha = 0.42f)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Session Insights",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = SkyBluePalette.Sky900
+                            )
+                            Text(
+                                text = "Track routine consistency and launch tailored activities quickly.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = SkyBluePalette.Sky700
+                            )
+                        }
+                    }
+                }
+
                 // 1. Profile Section (Clean, Centered, No Card)
                 item {
                     Column(

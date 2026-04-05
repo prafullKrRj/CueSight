@@ -3,6 +3,7 @@ package com.cuegight.cuesight.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -49,12 +50,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.cuegight.cuesight.ui.theme.CueSightColors
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -62,7 +64,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit = {},
-    showBackButton: Boolean = true
+    showBackButton: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
     var defaultIp by remember { mutableStateOf("192.168.4.1") }
     var isConnected by remember { mutableStateOf(false) }
@@ -72,6 +75,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
 
     Scaffold(
+        modifier = modifier,
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             CenterAlignedTopAppBar(
@@ -89,19 +93,49 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(SkyBluePalette.Sky100, SkyBluePalette.Sky50)))
                 .padding(padding)
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-            contentPadding = PaddingValues(bottom = 40.dp)
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(bottom = 40.dp, top = 8.dp)
+            ) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        color = SkyBluePalette.Sky200.copy(alpha = 0.45f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Control Center",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = SkyBluePalette.Sky900
+                            )
+                            Text(
+                                text = "Configure connection quality, reminders, and app behavior.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = SkyBluePalette.Sky700
+                            )
+                        }
+                    }
+                }
+
             // 1. Connection Status (Modern Pill Design)
             item {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = if (isConnected) CueSightColors.Green.copy(alpha = 0.1f)
+                    color = if (isConnected) SkyBluePalette.SuccessBlue.copy(alpha = 0.1f)
                     else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -121,7 +155,7 @@ fun SettingsScreen(
                                 if (isConnected) "Connected" else "Disconnected",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isConnected) CueSightColors.Green
+                                color = if (isConnected) SkyBluePalette.SuccessBlue
                                 else MaterialTheme.colorScheme.error
                             )
                         }
@@ -188,7 +222,7 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .background(SkyBluePalette.Sky50.copy(alpha = 0.95f))
                 ) {
                     // Notifications Toggle
                     Row(
@@ -240,7 +274,7 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .background(SkyBluePalette.Sky50.copy(alpha = 0.95f))
                 ) {
                     SettingItem(
                         title = "Help Guide",
@@ -262,6 +296,7 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(100.dp))
+            }
             }
         }
     }

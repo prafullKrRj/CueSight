@@ -13,13 +13,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cuegight.cuesight.core.util.EmotionMapper
-import com.cuegight.cuesight.ui.theme.CueSightColors
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,7 +46,7 @@ fun NewPracticeScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = SkyBluePalette.Sky50,
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -86,6 +87,7 @@ fun NewPracticeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(Brush.verticalGradient(listOf(SkyBluePalette.Sky100, SkyBluePalette.Sky50)))
         ) {
             // 1. Stats Header (Direct State Reading - No Animation)
             // This ensures instant updates when state changes
@@ -93,6 +95,23 @@ fun NewPracticeScreen(
                 correct = state.correctCount,
                 total = state.totalCount
             )
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = SkyBluePalette.Sky200.copy(alpha = 0.45f)
+            ) {
+                Text(
+                    text = "Teacher selects expression first, then student responds for instant feedback.",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SkyBluePalette.Sky700
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
 
             // 2. Main Content
             Box(
@@ -316,7 +335,7 @@ fun ResultView(
         Icon(
             imageVector = if (isCorrect) Icons.Rounded.CheckCircle else Icons.Rounded.Cancel,
             contentDescription = null,
-            tint = if (isCorrect) CueSightColors.Green else MaterialTheme.colorScheme.error,
+            tint = if (isCorrect) SkyBluePalette.SuccessBlue else MaterialTheme.colorScheme.error,
             modifier = Modifier.size(96.dp)
         )
 

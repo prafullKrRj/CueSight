@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -65,7 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.cuegight.cuesight.core.util.EmotionMapper
-import com.cuegight.cuesight.ui.theme.CueSightColors
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
 
@@ -112,7 +113,7 @@ fun NewTeachingScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = SkyBluePalette.Sky50,
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -124,14 +125,12 @@ fun NewTeachingScreen(
                         )
                         if (state.isStreaming && state.frameCount > 0) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Canvas(modifier = Modifier.size(6.dp)) {
-                                    drawCircle(color = CueSightColors.Green)
-                                }
+                                Canvas(modifier = Modifier.size(6.dp)) { drawCircle(color = SkyBluePalette.SuccessBlue) }
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     "LIVE",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = CueSightColors.Green,
+                                    color = SkyBluePalette.SuccessBlue,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -169,11 +168,27 @@ fun NewTeachingScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(Brush.verticalGradient(listOf(SkyBluePalette.Sky100, SkyBluePalette.Sky50)))
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp), // Slightly reduced padding to give more room for video
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                shape = RoundedCornerShape(18.dp),
+                color = SkyBluePalette.Sky200.copy(alpha = 0.45f)
+            ) {
+                Text(
+                    text = "Live feed + emotion detection. Use this mode to model clear expressions for learners.",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SkyBluePalette.Sky700
+                )
+            }
 
             // 1. Timer
             Text(

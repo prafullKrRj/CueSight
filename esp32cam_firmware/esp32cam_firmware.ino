@@ -4,6 +4,23 @@
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 
+// ─── OLED Libraries (Optional but recommended for CueSight practice feedback) ───
+// To use the OLED, install "Adafruit SSD1306" and "Adafruit GFX Library" in Arduino IDE.
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1 
+// The ESP32-CAM has limited pins. I2C can be routed to un-used pins like 14 and 15
+// (assuming you aren't using the microSD card).
+#define I2C_SDA 14
+#define I2C_SCL 15
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+bool oledConnected = false;
+
 // ─── AI-Thinker ESP32-CAM OV2640 Pins ───
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
@@ -23,8 +40,9 @@
 #define PCLK_GPIO_NUM     22
 
 // ─── Config ───
+// Set to match CueSight's default expected ESP32 AP settings
 const char* ssid     = "ESP32_CAM_P";
-const char* password = "12345678";
+const char* password = "12345678"; 
 
 // Shared command value — written by /cmd, read by your logic
 static volatile int receivedValue = 0;
@@ -32,13 +50,16 @@ static volatile int receivedValue = 0;
 // ─── MJPEG boundary (fixed, no heap alloc) ───
 #define PART_BOUNDARY "fb0d5a5b5e6b"
 static const char* STREAM_CONTENT_TYPE =
-        "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+    "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
 static const char* STREAM_BOUNDARY =
-        "\r\n--" PART_BOUNDARY "\r\n";
+    "\r\n--" PART_BOUNDARY "\r\n";
 static const char* STREAM_PART =
-        "Content-Type: image/jpeg\r\n"
-        "Content-Length: %u\r\n"
-        "X-Timestamp: %lu\r\n\r\n";
+    "Content-Type: image/jpeg\r\n"
+    "Content-Length: %u\r\n"
+    "X-Timestamp: %lu\r\n\r\n";
+
+// ─── Forward Declarations ───
+void displayMessageOnOLED(const char* msg, int textSize = 2);
 
 // ─── Stream handler (runs in its own HTTPD thread) ───
 static esp_err_t stream_handler(httpd_req_t *req) {
@@ -49,7 +70,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
     if (res != ESP_OK) return res;
 
-    // Disable any caching
+    // Disable any caching to keep latency low for CueSight app
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_hdr(req, "X-Framerate", "8");
 
@@ -84,18 +105,13 @@ static esp_err_t stream_handler(httpd_req_t *req) {
         if (res != ESP_OK) break;
 
         // Yield to let other tasks (including /cmd handler) run.
-        // At QVGA-quality-10 a frame takes ~15-20 ms to capture,
-        // so the real limiter is the sensor, not this delay.
-        // For ~8 FPS target: 125 ms per frame total.
-        // The capture itself takes ~20 ms, so we sleep ~100 ms.
-        // Adjust down for faster FPS (e.g., 80 → ~10 FPS).
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(100)); // Target ~8-10 FPS
     }
 
     return res;
 }
 
-// ─── Single frame (for debugging / snapshots) ───
+// ─── Single frame handler ───
 static esp_err_t frame_handler(httpd_req_t *req) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
@@ -109,27 +125,28 @@ static esp_err_t frame_handler(httpd_req_t *req) {
     return res;
 }
 
-// ─── Command handler — fully non-blocking, runs on a SEPARATE server ───
+// ─── Command handler (handles HttpCommandSender.kt requests) ───
 static esp_err_t cmd_handler(httpd_req_t *req) {
     char query[32];
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
         char val[8];
         if (httpd_query_key_value(query, "v", val, sizeof(val)) == ESP_OK) {
             receivedValue = atoi(val);
-            Serial.printf("CMD: %d\n", receivedValue);
+            Serial.printf("Received CMD from CueSight app: %d\n", receivedValue);
             httpd_resp_sendstr(req, "OK");
             return ESP_OK;
         }
     }
     httpd_resp_set_status(req, "400 Bad Request");
-    httpd_resp_sendstr(req, "Missing v");
+    httpd_resp_sendstr(req, "Missing v parameter");
     return ESP_OK;
 }
 
-// ─── Root page ───
+// ─── Root HTML page (Fallback for manual testing) ───
 static const char ROOT_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CueSight ESP32</title>
 <style>
   body{margin:0;background:#111;color:#eee;font-family:sans-serif;text-align:center}
   img{width:100%;max-width:640px;display:block;margin:10px auto}
@@ -138,17 +155,12 @@ static const char ROOT_HTML[] PROGMEM = R"rawliteral(
        font-size:16px}
   .btn:active{background:#0f0;color:#111}
 </style></head><body>
-<h2>ESP32-CAM OV2640</h2>
+<h2>CueSight Camera Feed</h2>
 <img id="stream" src="/stream">
-<div>
-  <a class="btn" href="#" onclick="sendCmd(1)">Cmd 1</a>
-  <a class="btn" href="#" onclick="sendCmd(2)">Cmd 2</a>
-  <a class="btn" href="#" onclick="sendCmd(3)">Cmd 3</a>
-</div>
 <p id="status">Ready</p>
 <script>
 function sendCmd(v){
-  fetch('/cmd?v='+v).then(r=>r.text()).then(t=>{
+  fetch(':81/cmd?v='+v).then(r=>r.text()).then(t=>{
     document.getElementById('status').textContent='Cmd '+v+': '+t;
   }).catch(e=>{
     document.getElementById('status').textContent='Error: '+e;
@@ -162,7 +174,7 @@ static esp_err_t root_handler(httpd_req_t *req) {
     return httpd_resp_send(req, ROOT_HTML, strlen(ROOT_HTML));
 }
 
-// ─── Start TWO servers: stream on core 1, commands on core 0 ───
+// ─── Server initialization ───
 static httpd_handle_t stream_httpd = NULL;
 static httpd_handle_t ctrl_httpd   = NULL;
 
@@ -170,38 +182,33 @@ void startServers() {
     // --- Stream server on port 80 ---
     httpd_config_t stream_config = HTTPD_DEFAULT_CONFIG();
     stream_config.server_port    = 80;
-    stream_config.ctrl_port      = 32768;
+    stream_config.ctrl_port      = 32768; // Unique internal ctrl port
     stream_config.max_uri_handlers = 4;
-    stream_config.stack_size     = 8192;   // stream needs more stack
-    // core_id = 1 → camera DMA runs best on core 1 (protocol core)
-    stream_config.core_id        = 1;
+    stream_config.stack_size     = 8192;  // stream needs more stack
+    stream_config.core_id        = 1;     // Camera DMA runs best on core 1
 
     if (httpd_start(&stream_httpd, &stream_config) == ESP_OK) {
-        httpd_uri_t root_uri    = { .uri = "/",       .method = HTTP_GET,
-                .handler = root_handler,   .user_ctx = NULL };
-        httpd_uri_t stream_uri  = { .uri = "/stream",  .method = HTTP_GET,
-                .handler = stream_handler, .user_ctx = NULL };
-        httpd_uri_t frame_uri   = { .uri = "/frame",   .method = HTTP_GET,
-                .handler = frame_handler,  .user_ctx = NULL };
+        httpd_uri_t root_uri    = { .uri = "/",       .method = HTTP_GET, .handler = root_handler,   .user_ctx = NULL };
+        httpd_uri_t stream_uri  = { .uri = "/stream", .method = HTTP_GET, .handler = stream_handler, .user_ctx = NULL };
+        httpd_uri_t frame_uri   = { .uri = "/frame",  .method = HTTP_GET, .handler = frame_handler,  .user_ctx = NULL };
         httpd_register_uri_handler(stream_httpd, &root_uri);
         httpd_register_uri_handler(stream_httpd, &stream_uri);
         httpd_register_uri_handler(stream_httpd, &frame_uri);
-        Serial.println("Stream server started on port 80");
+        Serial.println("✓ Stream server started on port 80");
     }
 
-    // --- Control server on port 81 (separate socket, never blocked by stream) ---
+    // --- Control server on port 81 (Matches Android app HttpCommandSender.kt) ---
     httpd_config_t ctrl_config = HTTPD_DEFAULT_CONFIG();
     ctrl_config.server_port    = 81;
-    ctrl_config.ctrl_port      = 32769;
+    ctrl_config.ctrl_port      = 32769; // Unique internal ctrl port
     ctrl_config.max_uri_handlers = 2;
     ctrl_config.stack_size     = 4096;
-    ctrl_config.core_id        = 0;   // runs on the other core
+    ctrl_config.core_id        = 0;     // Run on the other core
 
     if (httpd_start(&ctrl_httpd, &ctrl_config) == ESP_OK) {
-        httpd_uri_t cmd_uri = { .uri = "/cmd", .method = HTTP_GET,
-                .handler = cmd_handler, .user_ctx = NULL };
+        httpd_uri_t cmd_uri = { .uri = "/cmd", .method = HTTP_GET, .handler = cmd_handler, .user_ctx = NULL };
         httpd_register_uri_handler(ctrl_httpd, &cmd_uri);
-        Serial.println("Control server started on port 81");
+        Serial.println("✓ Control server started on port 81");
     }
 }
 
@@ -211,7 +218,19 @@ void setup() {
 
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n===== ESP32-CAM OV2640 Starting =====");
+    Serial.println("\n===== CueSight ESP32-CAM Base Starting =====");
+
+    // Initialize OLED (Optional)
+    Wire.begin(I2C_SDA, I2C_SCL);
+    if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+      oledConnected = true;
+      Serial.println("✓ OLED Initialized");
+      display.clearDisplay();
+      display.setTextColor(SSD1306_WHITE);
+      displayMessageOnOLED("Ready", 3); // Larger text size
+    } else {
+      Serial.println("OLED allocation failed or not connected.");
+    }
 
     // ── Camera init ──
     camera_config_t config;
@@ -235,18 +254,18 @@ void setup() {
     config.pin_reset     = RESET_GPIO_NUM;
     config.xclk_freq_hz  = 20000000;
     config.pixel_format  = PIXFORMAT_JPEG;
-    config.grab_mode     = CAMERA_GRAB_LATEST;   // always get freshest frame
+    config.grab_mode     = CAMERA_GRAB_LATEST;
 
     if (psramFound()) {
-        Serial.println("PSRAM: Found — using VGA + double buffer");
-        config.frame_size   = FRAMESIZE_VGA;      // 640x480 — much better quality
-        config.jpeg_quality = 10;                  // lower = better (range 0-63)
-        config.fb_count     = 2;                   // double-buffer: one capturing while one sending
+        Serial.println("PSRAM: Found — using QVGA + double buffer for speed");
+        config.frame_size   = FRAMESIZE_QVGA;     // Low resolution for high-speed streaming
+        config.jpeg_quality = 12;                 // Lower quality = smaller size = faster (0-63)
+        config.fb_count     = 2;
         config.fb_location  = CAMERA_FB_IN_PSRAM;
     } else {
-        Serial.println("PSRAM: Not found — using QVGA single buffer");
-        config.frame_size   = FRAMESIZE_QVGA;
-        config.jpeg_quality = 12;
+        Serial.println("PSRAM: Not found — using HQVGA single buffer");
+        config.frame_size   = FRAMESIZE_HQVGA;    // Very low resolution to prevent hangs on small memory
+        config.jpeg_quality = 15;
         config.fb_count     = 1;
         config.fb_location  = CAMERA_FB_IN_DRAM;
     }
@@ -257,46 +276,79 @@ void setup() {
         delay(1000);
         ESP.restart();
     }
-    Serial.println("Camera: Initialized");
+    Serial.println("✓ Camera Initialized");
 
-    // Fine-tune sensor
+    // Sensor optimizations for consistent brightness
     sensor_t *s = esp_camera_sensor_get();
-    s->set_brightness(s, 1);      // slight brightness boost
-    s->set_saturation(s, 1);      // slight saturation boost
-    s->set_whitebal(s, 1);        // auto white balance ON
-    s->set_awb_gain(s, 1);        // AWB gain ON
-    s->set_aec2(s, 1);            // auto exposure (DSP) ON
-    s->set_ae_level(s, 0);        // AE level (centered)
-    s->set_gainceiling(s, GAINCEILING_4X);  // limit gain to reduce noise
+    s->set_brightness(s, 1);
+    s->set_saturation(s, 1);
+    s->set_whitebal(s, 1);
+    s->set_awb_gain(s, 1);
+    s->set_aec2(s, 1);
+    s->set_ae_level(s, 0);
+    s->set_gainceiling(s, GAINCEILING_4X);
 
-    // ── WiFi AP ──
+    // ── WiFi AP (Matches CueSight Default ESP32 AP logic) ──
     WiFi.mode(WIFI_AP);
+    // You can hardcode an IP address here if needed, but 192.168.4.1 is the default SoftAP IP
     WiFi.softAP(ssid, password);
-    Serial.printf("WiFi AP: %s @ %s\n", ssid, WiFi.softAPIP().toString().c_str());
+    Serial.printf("✓ WiFi AP Started: %s @ %s\n", ssid, WiFi.softAPIP().toString().c_str());
 
-    // ── HTTP servers ──
+    // ── Start Servers ──
     startServers();
-
-    Serial.println("===== READY =====");
-    Serial.println("Connect to WiFi: ESP32_CAM");
-    Serial.println("Stream : http://192.168.4.1/stream");
-    Serial.println("Snapshot: http://192.168.4.1/frame");
-    Serial.println("Command : http://192.168.4.1:81/cmd?v=123");
+    Serial.println("===== CUESIGHT BACKEND READY =====");
 }
 
-// ─── Loop — free for your own logic ───
+// ─── Loop — Process incoming application commands ───
 void loop() {
-    // The HTTP servers run in their own FreeRTOS tasks.
-    // Use this loop for anything else (motor control, sensor reads, etc.)
+    static int lastProcessed = -1;
+    int cmd = receivedValue;
+    
+    if (cmd != lastProcessed) {
+        lastProcessed = cmd;
+        const char* statusStr = nullptr;
 
-    // Example: read the latest command value without blocking
-    static int lastPrinted = -1;
-    int v = receivedValue;
-    if (v != lastPrinted) {
-        Serial.printf("Loop sees CMD: %d\n", v);
-        lastPrinted = v;
-        // TODO: act on the command here
+        // Emotion Commands (1-7) & Practice Commands (10-12) based on HttpCommandSender.kt
+        switch(cmd) {
+            case 1: statusStr = "Happy"; break;
+            case 2: statusStr = "Sad"; break;
+            case 3: statusStr = "Angry"; break;
+            case 4: statusStr = "Surprise"; break; // Very long, will wrap automatically
+            case 5: statusStr = "Neutral"; break;
+            case 6: statusStr = "Disgust"; break;
+            case 7: statusStr = "Fear"; break;
+            
+            case 10: statusStr = "?\nGuess"; break; // Practice: Question mark
+            case 11: statusStr = "YES"; break;      // Practice: Correct ✓
+            case 12: statusStr = "NO"; break;       // Practice: Wrong ✗ ("X" is small, "NO" avoids symbol rendering issues)
+            
+            default:
+                if (cmd != 0) {
+                   Serial.printf("Unknown Cmd: %d\n", cmd); 
+                }
+                break;
+        }
+
+        if (statusStr != nullptr) {
+             Serial.printf("App says: %s\n", statusStr);
+             displayMessageOnOLED(statusStr, 3); // Increased Text size from 2 to 3
+             
+             // Reset back to 0 so we don't process it infinitely, 
+             // but if the app explicitly sends '0' nothing will display.
+             receivedValue = 0; 
+             lastProcessed = 0;
+        }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(10));   // 100 Hz loop, very low overhead
+    vTaskDelay(pdMS_TO_TICKS(50));
+}
+
+// Helper to draw to OLED if attached
+void displayMessageOnOLED(const char* msg, int textSize) {
+    if (!oledConnected) return;
+    display.clearDisplay();
+    display.setTextSize(textSize);
+    display.setCursor(0, 0);
+    display.println(msg);
+    display.display();
 }

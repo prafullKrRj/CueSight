@@ -13,9 +13,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.cuegight.cuesight.ui.theme.CueSightColors
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 import kotlinx.coroutines.delay
 
 /**
@@ -57,8 +58,8 @@ fun SplashScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        CueSightColors.Purple,
-                        CueSightColors.Blue
+                        SkyBluePalette.Sky700,
+                        SkyBluePalette.Sky300
                     )
                 )
             ),
@@ -74,7 +75,7 @@ fun SplashScreen(
             // App name
             Text(
                 text = "CueSight",
-                fontSize = 48.sp,
+                fontSize = 52.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
@@ -83,7 +84,15 @@ fun SplashScreen(
             Text(
                 text = "Emotion Recognition for Everyone",
                 fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.9f)
+                color = Color.White.copy(alpha = 0.92f),
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                text = "Calm. Clear. Connected.",
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.75f),
+                textAlign = TextAlign.Center
             )
         }
     }

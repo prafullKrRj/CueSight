@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 import com.cuegight.cuesight.utils.ImageUtils
 import com.cuegight.cuesight.viewmodel.StudentViewModel
 import org.koin.androidx.compose.koinViewModel
@@ -105,16 +108,31 @@ fun AddStudentScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(SkyBluePalette.Sky100, SkyBluePalette.Sky50)))
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = SkyBluePalette.Sky200.copy(alpha = 0.42f)
+            ) {
+                Text(
+                    text = "Add profile details to personalize training sessions and progress insights.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SkyBluePalette.Sky700
+                )
+            }
+
             // 1. Photo Upload (Clean & Central)
             Box(
                 modifier = Modifier
-                    .padding(top = 16.dp)
                     .size(120.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -160,7 +178,15 @@ fun AddStudentScreen(
             }
 
             // 2. Input Fields
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = SkyBluePalette.Sky50.copy(alpha = 0.95f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 // Name
                 OutlinedTextField(
                     value = name,
@@ -218,6 +244,7 @@ fun AddStudentScreen(
                     shape = RoundedCornerShape(16.dp),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
                 )
+                }
             }
 
             Spacer(Modifier.weight(1f))

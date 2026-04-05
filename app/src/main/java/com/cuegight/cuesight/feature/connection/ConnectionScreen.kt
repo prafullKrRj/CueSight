@@ -13,13 +13,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.cuegight.cuesight.ui.theme.CueSightColors
+import com.cuegight.cuesight.ui.theme.SkyBluePalette
 import org.koin.androidx.compose.koinViewModel
 
 /**
@@ -49,7 +50,7 @@ fun ConnectionScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(Brush.verticalGradient(listOf(SkyBluePalette.Sky100, SkyBluePalette.Sky50))),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -72,7 +73,8 @@ fun ConnectionScreen(
             // Main content area
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = SkyBluePalette.Sky50.copy(alpha = 0.96f))
             ) {
                 Box(
                     modifier = Modifier
@@ -185,7 +187,7 @@ fun ProgressIndicators(currentStep: ConnectionStep) {
                         .size(if (isCurrentStep) 16.dp else 12.dp)
                         .clip(CircleShape)
                         .background(
-                            if (active) CueSightColors.Purple
+                            if (active) SkyBluePalette.Sky700
                             else MaterialTheme.colorScheme.surfaceVariant
                         )
                 )
@@ -197,7 +199,7 @@ fun ProgressIndicators(currentStep: ConnectionStep) {
                         .width(32.dp)
                         .height(2.dp)
                         .background(
-                            if (currentStep.ordinal > index) CueSightColors.Purple
+                            if (currentStep.ordinal > index) SkyBluePalette.Sky500
                             else MaterialTheme.colorScheme.surfaceVariant
                         )
                 )
@@ -220,7 +222,7 @@ fun CheckWiFiStep(
             Icons.Default.Wifi,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
-            tint = if (isWifiEnabled) CueSightColors.Green else MaterialTheme.colorScheme.onSurface
+            tint = if (isWifiEnabled) SkyBluePalette.SuccessBlue else MaterialTheme.colorScheme.onSurface
         )
 
         Text(
@@ -275,7 +277,7 @@ fun ConnectWiFiStep(
             Icons.Default.Router,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
-            tint = CueSightColors.Blue
+            tint = SkyBluePalette.Sky500
         )
 
         Text(
@@ -398,7 +400,7 @@ fun TestHttpStep(
             Icons.Default.CloudSync,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
-            tint = CueSightColors.Orange
+            tint = SkyBluePalette.WarningBlue
         )
 
         Text(
@@ -450,14 +452,14 @@ fun SuccessStep() {
             modifier = Modifier
                 .size(80.dp)
                 .graphicsLayer { scaleX = scale; scaleY = scale },
-            tint = CueSightColors.Green
+            tint = SkyBluePalette.SuccessBlue
         )
 
         Text(
             text = "Connected Successfully!",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = CueSightColors.Green
+            color = SkyBluePalette.SuccessBlue
         )
 
         Text(
